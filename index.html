@@ -17,19 +17,19 @@
   --bg:#fbfbfa; --surface:#ffffff; --surface-2:#f0f1f0; --line:#dcdfdd; --rule:#2b2f2e;
   --fg:#262a29; --muted:#6b7270; --accent:#3c5a5e; --accent-soft:#e3eaea;
   --target:#9b7a35; --good:#3e6b4f; --warn:#9b7a35; --bad:#9a4b3c;
-  --bar:#7d969a; --bar-pre:#c9cfcd; --under:#8d8197;
+  --bar:#7d969a; --bar-pre:#c9cfcd; --under:#8d8197; --sc1:#a35a45; --sc2:#3c5a5e; --sc3:#5f86a8;
   --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#1a1c1c; --surface:#202323; --surface-2:#262a2a; --line:#363b3b; --rule:#c9cecc;
   --fg:#e3e6e4; --muted:#9aa2a0; --accent:#8fb0b3; --accent-soft:#2b3839;
   --target:#c9a65e; --good:#86b394; --warn:#c9a65e; --bad:#d18f80;
-  --bar:#6f8a8e; --bar-pre:#454c4b; --under:#a497ae; color-scheme:dark}}
+  --bar:#6f8a8e; --bar-pre:#454c4b; --under:#a497ae; --sc1:#d4927c; --sc2:#8fb0b3; --sc3:#8fb3d6; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#1a1c1c; --surface:#202323; --surface-2:#262a2a; --line:#363b3b; --rule:#c9cecc;
   --fg:#e3e6e4; --muted:#9aa2a0; --accent:#8fb0b3; --accent-soft:#2b3839;
   --target:#c9a65e; --good:#86b394; --warn:#c9a65e; --bad:#d18f80;
-  --bar:#6f8a8e; --bar-pre:#454c4b; --under:#a497ae; color-scheme:dark}
+  --bar:#6f8a8e; --bar-pre:#454c4b; --under:#a497ae; --sc1:#d4927c; --sc2:#8fb0b3; --sc3:#8fb3d6; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.65;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
@@ -124,6 +124,10 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 .ms i{display:none}
 .ms{background:linear-gradient(to bottom,transparent calc(100% - 15px),var(--bg) 0);padding-right:4px}
 .kd{position:absolute;font-size:.68rem;color:var(--fg);white-space:nowrap;line-height:14px;background:var(--bg)}
+.sctable th{line-height:1.25;font-size:.66rem;vertical-align:bottom}
+.sctable input[type=radio]{width:auto;accent-color:var(--accent)}
+tr.act td{background:var(--surface-2)}
+.scgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -172,6 +176,14 @@ tr.tgt td{border-bottom:2px solid var(--target)}
       <section class="panel" aria-labelledby="h-kpi">
         <div class="sechead"><h2 id="h-kpi">試算結果</h2><span id="verdict"></span></div>
         <div class="kpis" id="kpis"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-scn">
+        <div class="sechead"><h2 id="h-scn">シナリオ比較</h2><div class="legend" id="scLegend"></div></div>
+        <div class="scgrid">
+          <div class="scroll"><svg id="scChart" viewBox="0 0 860 220" role="img" aria-label="シナリオ別の累計契約率" style="width:100%;min-width:420px;height:auto;display:block"></svg></div>
+          <div class="scroll"><table id="scTbl"></table></div>
+        </div>
       </section>
 
       <section class="panel" aria-labelledby="h-chart">
@@ -226,9 +238,19 @@ const SAMPLE = {
     {name:"第2期", start:"2027-11", units:40, adj:0},
     {name:"第3期", start:"2028-04", units:30, adj:0}
   ],
+  scenarios:[
+    {name:"悲観", cpa:4.5, visitRate:18, closeRate:7,  launchClose:15},
+    {name:"標準", cpa:4,   visitRate:20, closeRate:8,  launchClose:18},
+    {name:"楽観", cpa:3.5, visitRate:24, closeRate:10, launchClose:22}
+  ],
+  activeScenario:1,
   adOverride:{}
 };
 const KEY="mansion-sales-sim-v1";
+const SC_FIELDS=["cpa","visitRate","closeRate","launchClose"];
+function pickSc(o){ const r={}; SC_FIELDS.forEach(k=>{ if(o&&o[k]!=null) r[k]=+o[k]; }); return r; }
+function syncScenario(){ if(!S.scenarios?.length) return; S.activeScenario=Math.min(Math.max(0,S.activeScenario|0),S.scenarios.length-1); Object.assign(S.sales,pickSc(S.scenarios[S.activeScenario])); }
+function simScenario(k){ const st=structuredClone(S); Object.assign(st.sales,pickSc(S.scenarios[k])); return simulateSales(st); }
 const TSUBO=3.30578; // 1坪 = 3.30578㎡
 const unitPrice = pj => (+pj.area||0)/TSUBO*(+pj.tsubo||0); // 平均価格（万円）= 平均専有面積(坪) × 坪単価
 let S = load();
@@ -252,7 +274,7 @@ const oku = man => man>=10000 ? `${fmt(man/10000,2)}億円` : `${fmt(man)}万円
 const validYm = s => /^\d{4}-\d{2}$/.test(s||"");
 
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; o.schedule={...structuredClone(SAMPLE.schedule),...(o.schedule||{})}; if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; o.schedule={...structuredClone(SAMPLE.schedule),...(o.schedule||{})}; if(!Array.isArray(o.scenarios)||!o.scenarios.length){ o.scenarios=structuredClone(SAMPLE.scenarios); o.scenarios[1]={name:"標準",...pickSc(o.sales)}; o.activeScenario=1; } if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
   return structuredClone(SAMPLE);
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
@@ -386,16 +408,20 @@ function renderInputs(){
       <fieldset><legend>広告</legend>
         <div class="fields">
           ${numField("広告費率","sales.adRate","%",{step:0.1,hint:"総販売額に対する広告予算"})}
-          ${numField("反響単価","sales.cpa","万円",{step:0.1,hint:"反響1件あたりの広告費"})}
           ${numField("自然反響","sales.organic","件/月",{step:1,hint:"現地看板・紹介など"})}
           ${numField("目標超過後の広告","sales.extendRate","%",{step:5,hint:"平均月額に対する割合"})}
         </div>
       </fieldset>
-      <fieldset><legend>反響から契約まで</legend>
+      <fieldset><legend>シナリオ</legend>
+        <div class="scroll"><table class="ptable sctable"><thead><tr><th>表示</th><th>名前</th><th>反響単価<br>万円</th><th>来場率<br>%</th><th>成約率<br>%</th><th>期開始<br>成約率%</th></tr></thead><tbody>
+        ${S.scenarios.map((c,k)=>`<tr><td><input type="radio" name="scsel" data-scsel="${k}" aria-label="${esc(c.name)}を表示" ${k===S.activeScenario?"checked":""}></td>
+          <td><input type="text" data-sc="${k}" data-k="name" value="${esc(c.name)}" aria-label="シナリオ名" style="width:50px"></td>
+          ${SC_FIELDS.map(f=>`<td><input type="number" step="any" min="0" data-sc="${k}" data-k="${f}" value="${c[f]}" aria-label="${esc(c.name)} ${f}" style="width:50px"></td>`).join("")}</tr>`).join("")}
+        </tbody></table></div>
+        <div class="hint">反響単価は反響1件あたりの広告費、来場率は反響のうちモデルルームに来る割合、成約率は見込客のうち当月に契約する割合です。画面の詳細と出力は「表示」で選んだシナリオで作ります。</div>
+      </fieldset>
+      <fieldset><legend>反響から契約まで（共通）</legend>
         <div class="fields">
-          ${numField("来場率","sales.visitRate","%",{step:1,hint:"反響 → モデルルーム来場"})}
-          ${numField("成約率","sales.closeRate","%",{step:0.5,hint:"見込客のうち当月契約"})}
-          ${numField("期開始月の成約率","sales.launchClose","%",{step:0.5,hint:"要望書を集めた見込客が登録・契約する月"})}
           ${numField("見込客残存率","sales.retain","%",{step:1,hint:"販売中、翌月も検討を続ける割合"})}
           ${numField("事前残存率","sales.preRetain","%",{step:1,hint:"販売開始前・在庫切れ時"})}
         </div>
@@ -440,11 +466,12 @@ function salesMilestones(R){
 /* ===== 結果表示 ===== */
 function render(){
   document.getElementById("ttl").textContent = (S.project.name? S.project.name+" ":"")+"販売計画";
+  syncScenario();
   const R=simulateSales(S);
   renderGantt(R);
   if(!R){ document.getElementById("kpis").innerHTML='<p class="warn">広告開始・完売目標・期の販売開始を入力してください。</p>'; return; }
   document.getElementById("lgUnder").hidden=!R.U;
-  renderKpis(R); renderChart(R); renderPhases(R); renderMonths(R);
+  renderKpis(R); renderScenarios(R); renderChart(R); renderPhases(R); renderMonths(R);
 }
 
 function compNote(R){
@@ -452,12 +479,40 @@ function compNote(R){
   const r=R.rows.filter(x=>x.i<=comp).at(-1); const left=R.supply-(r?r.sold:0);
   return left>0 ? `・竣工時 残り${left}戸` : `・竣工${comp-(R.selloutI??comp)}ヶ月前に完売`;
 }
+const SC_COLORS=["--sc1","--sc2","--sc3","--under"];
+function scenarioResults(){ return S.scenarios.map((c,k)=>({c,k,R:simScenario(k)})); }
+function scSummary(R){
+  const so=R.selloutI, d=so==null?null:so-R.tgtI;
+  return {sell: so==null?"期間内に完売せず":i2lbl(so), diff: so==null?"—": d>0?`${d}ヶ月遅れ`: d<0?`${-d}ヶ月前倒し`:"目標どおり", d,
+    comp: compNote(R).replace(/^・/,"")||"—", ad:R.adTotal, per:R.adTotal/Math.max(1,R.cTotal-R.ucTotal)};
+}
+function renderScenarios(Ract){
+  const list=scenarioResults().filter(x=>x.R);
+  document.getElementById("scLegend").innerHTML=list.map(x=>`<span><i style="background:var(${SC_COLORS[x.k%4]});height:3px"></i>${esc(x.c.name)}</span>`).join("")+'<span><i style="background:var(--target);height:3px"></i>目標ペース</span>';
+  document.getElementById("scTbl").innerHTML=`<thead><tr><th>シナリオ</th><th>完売予定</th><th>目標との差</th><th>竣工時</th><th>広告費</th><th>1戸あたり</th></tr></thead><tbody>${
+    list.map(x=>{ const m=scSummary(x.R); return `<tr class="${x.k===S.activeScenario?"act":""}"><td><b>${esc(x.c.name)}</b></td><td class="num">${m.sell}</td>
+      <td class="num"><span class="pill ${m.d==null||m.d>0?"bad":"good"}">${m.diff}</span></td><td class="num">${m.comp}</td><td class="num">${oku(m.ad)}</td><td class="num">${fmt(m.per)}万円</td></tr>`; }).join("")}</tbody>`;
+  // 累計契約率の比較グラフ
+  const W=860,H=220,m={l:44,r:16,t:12,b:28}, iw=W-m.l-m.r, ih=H-m.t-m.b;
+  const i0=Math.min(...list.map(x=>x.R.rows[0].i)), i1=Math.max(Ract.tgtI+1,...list.map(x=>x.R.rows.at(-1).i));
+  const x=i=>m.l+(i-i0)/Math.max(1,i1-i0)*iw, y=p=>m.t+ih-p*ih;
+  let g="";
+  [0,.25,.5,.75,1].forEach(p=>g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(p)}" y2="${y(p)}" stroke="var(--line)"/><text x="${m.l-6}" y="${y(p)+4}" text-anchor="end">${p*100}%</text>`);
+  const every=Math.ceil((i1-i0+1)/14); for(let i=i0;i<=i1;i+=every) g+=`<text x="${x(i)}" y="${H-8}" text-anchor="middle">${i2short(i)}</text>`;
+  const tp=[]; for(let i=i0;i<=i1;i++){ const t=i<Ract.saleI?0:Math.min(1,(i-Ract.saleI+1)/(Ract.tgtI-Ract.saleI+1)); tp.push(`${tp.length?"L":"M"}${x(i)},${y(t)}`); }
+  g+=`<path d="${tp.join("")}" fill="none" stroke="var(--target)" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  list.forEach(o=>{ const act=o.k===S.activeScenario;
+    g+=`<path d="${o.R.rows.map((r,j)=>`${j?"L":"M"}${x(r.i)},${y(r.rate)}`).join("")}" fill="none" stroke="var(${SC_COLORS[o.k%4]})" stroke-width="${act?2.4:1.4}" opacity="${act?1:.85}"/>`;
+    const L=o.R.rows.at(-1); g+=`<circle cx="${x(L.i)}" cy="${y(L.rate)}" r="${act?3.5:2.5}" fill="var(${SC_COLORS[o.k%4]})"><title>${esc(o.c.name)} ${i2lbl(L.i)}</title></circle>`; });
+  document.getElementById("scChart").innerHTML=g;
+}
 function renderKpis(R){
   const so=R.selloutI, delay = so==null? null : so-R.tgtI;
   const v=document.getElementById("verdict");
-  v.innerHTML = so==null ? '<span class="pill bad">7年以内に完売しません</span>'
+  const scn=esc(S.scenarios[S.activeScenario]?.name||"");
+  v.innerHTML = `<span class="hint">${scn}シナリオ　</span>`+(so==null ? '<span class="pill bad">7年以内に完売しません</span>'
     : delay>0 ? `<span class="pill bad">目標より ${delay} ヶ月遅れ</span>`
-    : delay<0 ? `<span class="pill good">目標より ${-delay} ヶ月前倒し</span>` : '<span class="pill good">目標月に完売</span>';
+    : delay<0 ? `<span class="pill good">目標より ${-delay} ヶ月前倒し</span>` : '<span class="pill good">目標月に完売</span>');
   const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
   const needPace=R.phaseSupply/(R.tgtI-R.saleI+1);
   const k=[
@@ -572,6 +627,8 @@ document.addEventListener("change",e=>{
   if(t.dataset.path){ set(t.dataset.path, t.type==="checkbox"? t.checked : t.type==="number"? (t.value===""?0:+t.value) : t.value); }
   else if(t.dataset.ph!=null){ const p=S.phases[+t.dataset.ph]; p[t.dataset.k]= t.type==="number"?+t.value:t.value; }
   else if(t.dataset.vis){ S.visible[t.dataset.vis]=t.checked; save(); renderTabs(); renderInputs(); render(); return; }
+  else if(t.dataset.scsel!=null){ S.activeScenario=+t.dataset.scsel; save(); render(); return; }
+  else if(t.dataset.sc!=null){ const c=S.scenarios[+t.dataset.sc]; c[t.dataset.k]= t.type==="number"? +t.value : t.value; save(); render(); return; }
   else if(t.dataset.ym){ if(t.value==="") delete S.adOverride[t.dataset.ym]; else S.adOverride[t.dataset.ym]=+t.value; }
   else return;
   save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo)|sales\.(adStart|collectStart))/.test(t.dataset.path||"")) renderInputs(); render();
@@ -595,7 +652,7 @@ let pasteArmed=false;
 document.addEventListener("paste",e=>{
   if(!pasteArmed && e.target.closest("input")) return;
   const txt=e.clipboardData?.getData("text")||"";
-  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},schedule:{...structuredClone(SAMPLE.schedule),...(o.schedule||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
+  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,scenarios:Array.isArray(o.scenarios)&&o.scenarios.length?o.scenarios:structuredClone(SAMPLE.scenarios),sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},schedule:{...structuredClone(SAMPLE.schedule),...(o.schedule||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
   catch(_){ if(pasteArmed) toast("設定の形式ではありません"); }
   pasteArmed=false;
 });
@@ -616,7 +673,7 @@ const safeName = () => (S.project.name||"販売計画").replace(/[\\/:*?"<>|]/g,
 
 function assumptionRows(R){
   const s=S.sales;
-  return [["物件名",S.project.name],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
+  return [["物件名",S.project.name],["シナリオ",S.scenarios[S.activeScenario]?.name||""],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
     ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],...(keyDates().comp!=null?[["竣工",i2lbl(keyDates().comp)]]:[]),...(keyDates().ho!=null?[["引渡し",i2lbl(keyDates().ho)]]:[]),
     ["広告費率",s.adRate+" %"],["反響単価",s.cpa+" 万円/件"],["自然反響",s.organic+" 件/月"],["来場率",s.visitRate+" %"],
@@ -644,6 +701,10 @@ function buildXlsx(){
   const ws3=XLSX.utils.aoa_to_sheet([["項目","値"],...assumptionRows(R),[],["出力日",new Date().toLocaleDateString("ja-JP")],["注記","マンション販売計画シミュレーターの試算値です。"]]);
   ws3["!cols"]=[{wch:20},{wch:30}];
   XLSX.utils.book_append_sheet(wb,ws3,"前提条件");
+  const sc=[["シナリオ","反響単価(万円)","来場率(%)","成約率(%)","期開始月の成約率(%)","完売予定","目標との差","竣工時","広告費(万円)","1戸あたり広告費(万円)"],
+    ...scenarioResults().filter(x=>x.R).map(x=>{ const m=scSummary(x.R); return [x.c.name,x.c.cpa,x.c.visitRate,x.c.closeRate,x.c.launchClose,m.sell,m.diff,m.comp,Math.round(m.ad),Math.round(m.per)]; })];
+  const ws4=XLSX.utils.aoa_to_sheet(sc); ws4["!cols"]=[10,13,10,10,18,14,12,20,13,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws4,"シナリオ比較");
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
 
@@ -664,7 +725,7 @@ async function buildPptx(){
   /* ===== 1枚目：計画の全体像 ===== */
   let sl=pptx.addSlide();
   const KD=keyDates();
-  head(sl,`${safeName()}　販売計画`,`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）　${KD.comp!=null?`竣工 ${i2lbl(KD.comp)}　`:""}${KD.ho!=null?`引渡し ${i2lbl(KD.ho)}　`:""}総販売額 ${oku(R.totalRev)}　${R.supply}戸`);
+  head(sl,`${safeName()}　販売計画`,`${S.scenarios[S.activeScenario]?.name||""}シナリオ　完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）　${KD.comp!=null?`竣工 ${i2lbl(KD.comp)}　`:""}${KD.ho!=null?`引渡し ${i2lbl(KD.ho)}　`:""}総販売額 ${oku(R.totalRev)}　${R.supply}戸`);
 
   // 左上：全体工程
   const LX=0.4, LW=8.15;
@@ -731,14 +792,13 @@ async function buildPptx(){
   if(R.U) body.unshift(["アンダー",`${i2short(R.U.si)}〜`,String(R.U.units),fmt(R.U.price),"—",R.U.done!=null?i2short(R.U.done):"—"]);
   sl.addTable([hd,...body],{x:RX,y:py+0.27,w:RW,colW:[0.72,0.68,0.45,0.75,0.78,0.7],fontFace:F,fontSize:8,color:C.ink,rowH:0.22,align:"center",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
 
-  // 右下：前提条件（主なもの）
+  // 右下：シナリオ比較
   const ay=py+0.27+(body.length+1)*0.22+0.2;
-  label(sl,"前提条件",RX,ay,3);
-  const s=S.sales;
-  const ar=[["平均専有面積・坪単価",`${fmt(S.project.area,1)}㎡・${fmt(S.project.tsubo)}万円/坪`],["広告費率・反響単価",`${s.adRate}%・${s.cpa}万円/件`],
-    ["来場率",`${s.visitRate}%`],["成約率（期開始月）",`${s.closeRate}%（${s.launchClose??s.closeRate}%）`],["見込客残存率",`${s.retain}%（事前 ${s.preRetain}%）`]];
-  sl.addTable(ar.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:v,options:{align:"right"}}]),
-    {x:RX,y:ay+0.27,w:RW,colW:[1.75,RW-1.75],fontFace:F,fontSize:8,color:C.ink,rowH:0.21,border:{type:"solid",color:C.line,pt:0.5},margin:0.03});
+  label(sl,"シナリオ比較",RX,ay,3);
+  const sh=["シナリオ","成約率","完売予定","目標との差","広告費"].map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
+  const sb=scenarioResults().filter(x=>x.R).map(x=>{ const m=scSummary(x.R), act=x.k===S.activeScenario, o=act?{bold:true}:{};
+    return [{text:x.c.name+(act?"（表示中）":""),options:o},{text:`${x.c.closeRate}%`,options:o},{text:x.R.selloutI==null?"完売せず":i2short(x.R.selloutI),options:o},{text:m.diff,options:{...o,color:m.d==null||m.d>0?C.bad:C.good}},{text:oku(m.ad),options:o}]; });
+  sl.addTable([sh,...sb],{x:RX,y:ay+0.27,w:RW,colW:[1.15,0.6,0.75,0.83,0.75],fontFace:F,fontSize:8,color:C.ink,rowH:0.22,align:"center",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
 
   /* ===== 2枚目：月次計画表（1枚に収める） ===== */
   sl=pptx.addSlide();
