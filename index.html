@@ -123,6 +123,7 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 .ms{position:absolute;font-size:.68rem;color:var(--fg);white-space:nowrap;line-height:1.2;padding-left:4px;border-left:1px solid var(--muted)}
 .ms i{display:none}
 .ms{background:linear-gradient(to bottom,transparent calc(100% - 15px),var(--bg) 0);padding-right:4px}
+.kd{position:absolute;font-size:.68rem;color:var(--fg);white-space:nowrap;line-height:14px;background:var(--bg)}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -217,13 +218,13 @@ const SAMPLE = {
     build:{start:"2027-07", end:"2029-02"},
     handover:{start:"2029-03", end:"2029-03"}
   },
-  under:{on:true, start:"2027-01", end:"2027-03", units:10, adj:-3},
+  under:{on:true, start:"2027-01", end:"2027-03", units:10, adj:0},
   sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adRate:2.0, cpa:4.0, organic:15,
          visitRate:20, closeRate:8, launchClose:18, retain:50, preRetain:65, extendRate:100},
   phases:[
-    {name:"第1期", start:"2027-06", units:40, adj:-2},
+    {name:"第1期", start:"2027-06", units:40, adj:0},
     {name:"第2期", start:"2027-11", units:40, adj:0},
-    {name:"第3期", start:"2028-04", units:30, adj:3}
+    {name:"第3期", start:"2028-04", units:30, adj:0}
   ],
   adOverride:{}
 };
@@ -260,12 +261,12 @@ function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} 
 function simulateSales(st){
   st.project.avgPrice = unitPrice(st.project);
   const s=st.sales, P=st.phases.filter(p=>validYm(p.start)&&p.units>0)
-    .map(p=>({...p, si:ym2i(p.start), price:st.project.avgPrice*(1+(+p.adj||0)/100), left:+p.units, sold:0, first:0}))
+    .map(p=>({...p, si:ym2i(p.start), price:st.project.avgPrice, left:+p.units, sold:0, first:0}))
     .sort((a,b)=>a.si-b.si);
   if(!P.length||!validYm(s.adStart)||!validYm(s.target)) return null;
   const u=st.under;
   const U = u&&u.on&&validYm(u.start)&&validYm(u.end)&&+u.units>0
-    ? {name:"アンダー販売", si:ym2i(u.start), ei:Math.max(ym2i(u.start),ym2i(u.end)), units:+u.units, price:st.project.avgPrice*(1+(+u.adj||0)/100), sold:0, done:null} : null;
+    ? {name:"アンダー販売", si:ym2i(u.start), ei:Math.max(ym2i(u.start),ym2i(u.end)), units:+u.units, price:st.project.avgPrice, sold:0, done:null} : null;
   const phaseSupply=P.reduce((a,p)=>a+p.left,0);
   const supply=phaseSupply+(U?U.units:0);
   const phaseRev=P.reduce((a,p)=>a+p.left*p.price,0);
@@ -359,23 +360,23 @@ function renderInputs(){
           ${ymField("アンダー販売 開始","under.start")}
           ${ymField("アンダー販売 終了","under.end")}
           ${numField("アンダー販売 戸数","under.units","戸",{step:1})}
-          ${numField("価格調整","under.adj","%",{step:0.5,min:-100})}
           <div class="hint full">広告開始より前に、関係者や地権者などへ先行して販売する分です。期間内に均等に契約する前提で、広告予算の対象外です。</div>
         </div>`:""}
         <div class="fields">
           ${ymField("広告開始","sales.adStart")}
           ${ymField("集客開始","sales.collectStart",{hint:"モデルルーム来場の受付開始"})}
           ${ymField("完売目標","sales.target")}
+          ${ymField("竣工","schedule.build.end",{hint:"施工の終了月と連動"})}
+          ${ymField("引渡し","schedule.handover.start")}
         </div>
         ${schedWarn()}
       </fieldset>
       <fieldset><legend>期分け</legend>
-        <div class="scroll"><table class="ptable"><thead><tr><th>期</th><th>販売開始</th><th>戸数</th><th>価格±%</th><th></th></tr></thead><tbody>
+        <div class="scroll"><table class="ptable"><thead><tr><th>期</th><th>販売開始</th><th>戸数</th><th></th></tr></thead><tbody>
         ${S.phases.map((p,k)=>`<tr>
           <td><input aria-label="期名" data-ph="${k}" data-k="name" type="text" value="${esc(p.name)}" style="width:58px"></td>
           <td><input aria-label="販売開始" data-ph="${k}" data-k="start" type="month" value="${p.start}" style="width:108px"></td>
           <td><input aria-label="戸数" data-ph="${k}" data-k="units" type="number" min="0" step="1" value="${p.units}" style="width:48px"></td>
-          <td><input aria-label="価格調整" data-ph="${k}" data-k="adj" type="number" step="0.5" value="${p.adj}" style="width:48px"></td>
           <td><button type="button" data-del="${k}" aria-label="${esc(p.name)}を削除" ${S.phases.length<2?"disabled":""}>×</button></td></tr>`).join("")}
         </tbody></table></div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" id="addPhase">期を追加</button>
@@ -423,6 +424,12 @@ function schedWarn(){
 }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* 竣工・引渡し（施工の終了月＝竣工、竣工・引渡しの開始月＝引渡し） */
+function keyDates(){
+  const b=S.schedule.build?.end, h=S.schedule.handover;
+  if(h&&validYm(h.start)&&(!validYm(h.end)||ym2i(h.end)<ym2i(h.start))) h.end=h.start;
+  return {comp: validYm(b)?ym2i(b):null, ho: h&&validYm(h.start)?ym2i(h.start):null};
+}
 /* 販売の節目（全体工程に表示） */
 function salesMilestones(R){
   const ms=[];
@@ -440,6 +447,11 @@ function render(){
   renderKpis(R); renderChart(R); renderPhases(R); renderMonths(R);
 }
 
+function compNote(R){
+  const {comp}=keyDates(); if(comp==null) return "";
+  const r=R.rows.filter(x=>x.i<=comp).at(-1); const left=R.supply-(r?r.sold:0);
+  return left>0 ? `・竣工時 残り${left}戸` : `・竣工${comp-(R.selloutI??comp)}ヶ月前に完売`;
+}
 function renderKpis(R){
   const so=R.selloutI, delay = so==null? null : so-R.tgtI;
   const v=document.getElementById("verdict");
@@ -449,7 +461,7 @@ function renderKpis(R){
   const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
   const needPace=R.phaseSupply/(R.tgtI-R.saleI+1);
   const k=[
-    ["完売予定", so==null?"—":i2lbl(so), `目標 ${i2lbl(R.tgtI)}`],
+    ["完売予定", so==null?"—":i2lbl(so), `目標 ${i2lbl(R.tgtI)}${compNote(R)}`],
     ["総販売額", oku(R.totalRev), `${fmt(R.supply)}戸・平均${fmt(R.totalRev/R.supply)}万円`],
     ["広告費 合計", oku(R.adTotal), `売上比 ${fmt(R.adTotal/R.totalRev*100,2)}%（予算 ${oku(R.budget)}）`],
     ["1戸あたり広告費", `${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`, "契約1件の獲得コスト"],
@@ -532,11 +544,15 @@ function renderGantt(R){
   if(R) sales.si=R.adI;
   const list=[items[0],items[1],items[2],...under,sales,items[3]].map(it=>it.ready?it:{...it,si:validYm(it.s)?ym2i(it.s):null,ei:validYm(it.e)?ym2i(it.e):null});
   const shown=list.filter(it=>it.key==="sales"||S.visible[it.key]!==false); list.length=0; list.push(...shown);
-  const all=list.flatMap(it=>[it.si,it.ei,it.ti]).filter(v=>v!=null);
+  const KD0=keyDates(); const all=list.flatMap(it=>[it.si,it.ei,it.ti]).concat([KD0.comp,KD0.ho]).filter(v=>v!=null);
   if(!all.length){document.getElementById("gantt").innerHTML="";return;}
   const a=Math.min(...all), b=Math.max(...all)+1, span=b-a;
   const pct=i=>((i-a)/span*100);
   let ticks=""; for(let i=a;i<=b;i++){ if((i%12)===0) ticks+=`<span style="position:absolute;left:${pct(i)}%;top:0;bottom:0;border-left:1px solid var(--line)"></span><span class="num" style="position:absolute;left:calc(${pct(i)}% + 3px);top:-2px;font-size:.68rem;color:var(--muted)">${i/12}年</span>`; }
+  const KD=keyDates(); let kdLines="";
+  [[KD.comp,"竣工"],[KD.ho,"引渡し"]].forEach(([i,l],lv)=>{ if(i==null||i<a||i>b) return; const p=pct(i), flip=p>60;
+    ticks+=`<span class="kd" style="top:${14+lv*15}px;${flip?`right:${100-p}%;padding-right:4px;border-right`:`left:${p}%;padding-left:4px;border-left`}:1px dashed var(--fg)">${l} ${i2short(i)}</span>`;
+    kdLines+=`<span style="position:absolute;left:${p}%;top:-6px;bottom:-6px;border-left:1px dashed var(--fg);opacity:.55"></span>`; });
   const html=list.map(it=>{
     if(it.si==null||it.ei==null) return `<div class="gantt-row"><span>${it.name}</span><span class="hint">日付未入力</span></div>`;
     const left=pct(it.si), w=Math.max(1.2,pct(it.ei+1)-left);
@@ -545,9 +561,9 @@ function renderGantt(R){
         <span class="ms" style="left:${pct(m.i)}%;top:16px;padding-top:${4+(k%3)*13}px;z-index:${5-k}"><i></i>${m.l} ${i2short(m.i)}</span>`).join("") : "";
     return `<div class="gantt-row"${it.ms?' style="align-items:start"':""}><button type="button" class="glink" data-tab="${it.key}">${it.name}</button>
       <div style="position:relative;height:${it.ms?66:16}px"><div style="position:absolute;inset:0 0 auto 0;height:16px;background:var(--surface-2)"></div>
-        <span title="${i2lbl(it.si)}〜${i2lbl(it.ei)}" style="position:absolute;left:${left}%;width:${w}%;top:3px;height:10px;border-radius:1px;background:${it.color||(it.ready?"var(--accent)":"var(--bar-pre)")}"></span>${tgt}${ms}</div></div>`;
+        <span title="${i2lbl(it.si)}〜${i2lbl(it.ei)}" style="position:absolute;left:${left}%;width:${w}%;top:3px;height:10px;border-radius:1px;background:${it.color||(it.ready?"var(--accent)":"var(--bar-pre)")}"></span>${tgt}${kdLines}${ms}</div></div>`;
   }).join("");
-  document.getElementById("gantt").innerHTML=`<div class="gantt-row"><span></span><div style="position:relative;height:14px">${ticks}</div></div>`+html;
+  document.getElementById("gantt").innerHTML=`<div class="gantt-row"><span></span><div style="position:relative;height:44px">${ticks}</div></div>`+html;
 }
 
 /* ===== イベント ===== */
@@ -602,7 +618,7 @@ function assumptionRows(R){
   const s=S.sales;
   return [["物件名",S.project.name],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
-    ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],
+    ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],...(keyDates().comp!=null?[["竣工",i2lbl(keyDates().comp)]]:[]),...(keyDates().ho!=null?[["引渡し",i2lbl(keyDates().ho)]]:[]),
     ["広告費率",s.adRate+" %"],["反響単価",s.cpa+" 万円/件"],["自然反響",s.organic+" 件/月"],["来場率",s.visitRate+" %"],
     ["成約率",s.closeRate+" %"],["期開始月の成約率",(s.launchClose??s.closeRate)+" %"],["見込客残存率",s.retain+" %"],["事前残存率",s.preRetain+" %"],["目標超過後の広告",s.extendRate+" %"]];
 }
@@ -647,7 +663,8 @@ async function buildPptx(){
 
   /* ===== 1枚目：計画の全体像 ===== */
   let sl=pptx.addSlide();
-  head(sl,`${safeName()}　販売計画`,`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）　総販売額 ${oku(R.totalRev)}　${R.supply}戸`);
+  const KD=keyDates();
+  head(sl,`${safeName()}　販売計画`,`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）　${KD.comp!=null?`竣工 ${i2lbl(KD.comp)}　`:""}${KD.ho!=null?`引渡し ${i2lbl(KD.ho)}　`:""}総販売額 ${oku(R.totalRev)}　${R.supply}戸`);
 
   // 左上：全体工程
   const LX=0.4, LW=8.15;
@@ -657,12 +674,13 @@ async function buildPptx(){
     .map(([n,sc])=> sc==="U"? {n,si:R.U.si,ei:R.U.ei,col:C.und}
       : sc? {n,si:validYm(sc.start)?ym2i(sc.start):null,ei:validYm(sc.end)?ym2i(sc.end):null,col:C.pre}
       : {n,si:R.adI,ei:so??R.rows.at(-1).i,col:C.acc,sales:true});
-  const all=items.flatMap(i=>[i.si,i.ei]).concat([R.tgtI+1]).filter(v=>v!=null);
+  const all=items.flatMap(i=>[i.si,i.ei]).concat([R.tgtI+1,KD.comp,KD.ho]).filter(v=>v!=null);
   const a=Math.min(...all), b=Math.max(...all)+1;
   const gx=LX+1.15, gw=LW-1.15, gy=1.68, X=i=>gx+(i-a)/(b-a)*gw;
   const rhOf=it=>it.sales?0.78:0.3; const ys=[]; let yy=gy; items.forEach(it=>{ ys.push(yy); yy+=rhOf(it); });
   for(let i=a;i<=b;i++){ if(i%12===0){ sl.addShape(pptx.ShapeType.line,{x:X(i),y:gy-0.05,w:0,h:yy-gy,line:{color:C.line,width:0.5}});
       sl.addText(`${i/12}年`,{x:X(i)+0.03,y:gy-0.27,w:0.8,h:0.2,fontFace:F,fontSize:8,color:C.mut,margin:0}); } }
+  const kdMarks=[[KD.comp,"竣工"],[KD.ho,"引渡し"]].filter(([i])=>i!=null);
   items.forEach((it,k)=>{ const y=ys[k];
     sl.addText(it.n,{x:LX,y:y+0.02,w:1.1,h:0.22,fontFace:F,fontSize:9,color:C.ink,bold:!!it.sales,margin:0});
     sl.addShape(pptx.ShapeType.rect,{x:gx,y:y+0.04,w:gw,h:0.18,fill:{color:C.bg2}});
@@ -678,8 +696,11 @@ async function buildPptx(){
     sl.addShape(pptx.ShapeType.line,{x:X(R.tgtI+1),y:y-0.02,w:0,h:0.3,line:{color:C.tgt,width:1.5}});
     sl.addText(`完売目標 ${i2short(R.tgtI)}`,{x:X(R.tgtI+1)+0.04,y:y+0.24,w:1.1,h:0.18,fontFace:F,fontSize:7,color:C.tgt,margin:0}); });
 
+  kdMarks.forEach(([i,l],lv)=>{ const x=X(i), ly=yy+0.02+lv*0.18, flip=x>gx+gw*0.6;
+    sl.addShape(pptx.ShapeType.line,{x,y:gy-0.05,w:0,h:ly-gy+0.2,line:{color:C.ink,width:0.75,dashType:"dash"}});
+    sl.addText(`${l} ${i2short(i)}`,{x:flip?x-1.03:x+0.03,y:ly,w:1,h:0.18,fontFace:F,fontSize:8,color:C.ink,align:flip?"right":"left",margin:0}); });
   // 左下：契約推移
-  const cy=Math.max(yy+0.15,3.9);
+  const cy=Math.max(yy+0.15+kdMarks.length*0.18,3.9);
   label(sl,"契約推移",LX,cy,3);
   const labels=R.rows.map(r=>i2short(r.i));
   sl.addChart([
@@ -695,7 +716,7 @@ async function buildPptx(){
   const RX=8.85, RW=4.08;
   label(sl,"主要指標",RX,1.15,3);
   const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
-  const kp=[["完売予定",so==null?"—":i2lbl(so)],["完売目標",i2lbl(R.tgtI)],["総販売額",oku(R.totalRev)],["平均販売価格",`${fmt(S.project.avgPrice)}万円`],
+  const kp=[["完売予定",so==null?"—":i2lbl(so)],["完売目標",i2lbl(R.tgtI)],...(KD.comp!=null?[["竣工",`${i2lbl(KD.comp)}（${compNote(R).slice(1)}）`]]:[]),...(KD.ho!=null?[["引渡し",i2lbl(KD.ho)]]:[]),["総販売額",oku(R.totalRev)],["平均販売価格",`${fmt(S.project.avgPrice)}万円`],
     ["広告費 合計",`${oku(R.adTotal)}（${fmt(R.adTotal/R.totalRev*100,2)}%）`],["1戸あたり広告費",`${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`],
     ["月間契約ペース",`${fmt((R.cTotal-R.ucTotal)/saleMonths,1)}戸（必要 ${fmt(R.phaseSupply/(R.tgtI-R.saleI+1),1)}戸）`],["反響→来場→契約",`${fmt(R.inqTotal)}→${fmt(R.visTotal)}→${fmt(R.cTotal-R.ucTotal)}`]];
   sl.addTable(kp.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:v,options:{bold:true,align:"right"}}]),
