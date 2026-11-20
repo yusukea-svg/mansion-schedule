@@ -117,6 +117,9 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 .check{display:flex;gap:8px;align-items:center;font-size:.82rem;color:var(--fg);cursor:pointer}
 .check input{width:auto;accent-color:var(--accent)}
 .subbox{padding:10px 0 4px;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line)}
+.vis{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-bottom:12px}
+.vis .check{font-size:.78rem}
+.derived{padding-top:2px}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -151,6 +154,7 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 
   <section class="panel" aria-labelledby="h-gantt">
     <div class="sechead"><h2 id="h-gantt">全体工程</h2><span class="legend"><span><i style="background:var(--accent)"></i>販売（試算済み）</span><span><i style="background:var(--under)"></i>アンダー販売</span><span><i style="background:var(--bar-pre)"></i>日付のみ（詳細は今後追加）</span><span><i style="background:var(--target)"></i>完売目標</span></span></div>
+    <div id="visToggles" class="vis"></div>
     <div id="gantt" class="ki"></div>
   </section>
 
@@ -202,7 +206,8 @@ tr.tgt td{border-bottom:2px solid var(--target)}
    新しい工程（用地取得・設計・施工・竣工引渡し）を追加するときは MODULES に要素を足し、
    inputs(render) と simulate を実装する。全体工程ガントは各モジュールの span() を読む。 */
 const SAMPLE = {
-  project:{name:"(仮称)サンプルレジデンス", units:120, avgPrice:6800},
+  project:{name:"(仮称)サンプルレジデンス", units:120, area:70, tsubo:320, avgPrice:6776},
+  visible:{land:true, design:true, build:true, handover:true},
   schedule:{
     land:{start:"2026-10", end:"2026-12"},
     design:{start:"2027-01", end:"2027-06"},
@@ -220,6 +225,8 @@ const SAMPLE = {
   adOverride:{}
 };
 const KEY="mansion-sales-sim-v1";
+const TSUBO=3.30578; // 1坪 = 3.30578㎡
+const unitPrice = pj => (+pj.area||0)/TSUBO*(+pj.tsubo||0); // 平均価格（万円）= 平均専有面積(坪) × 坪単価
 let S = load();
 let activeTab = "sales";
 
@@ -241,13 +248,14 @@ const oku = man => man>=10000 ? `${fmt(man/10000,2)}億円` : `${fmt(man)}万円
 const validYm = s => /^\d{4}-\d{2}$/.test(s||"");
 
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; return o; } } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
   return structuredClone(SAMPLE);
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 
 /* ===== 販売シミュレーション ===== */
 function simulateSales(st){
+  st.project.avgPrice = unitPrice(st.project);
   const s=st.sales, P=st.phases.filter(p=>validYm(p.start)&&p.units>0)
     .map(p=>({...p, si:ym2i(p.start), price:st.project.avgPrice*(1+(+p.adj||0)/100), left:+p.units, sold:0, first:0}))
     .sort((a,b)=>a.si-b.si);
@@ -319,7 +327,10 @@ function get(path){ return path.split(".").reduce((o,k)=>o?.[k],S); }
 function set(path,val){ const ks=path.split("."); let o=S; ks.slice(0,-1).forEach(k=>o=o[k]); o[ks.at(-1)]=val; }
 
 function renderTabs(){
-  document.getElementById("tabs").innerHTML = MODULES.map(m=>
+  if(activeTab!=="sales"&&S.visible[activeTab]===false) activeTab="sales";
+  document.getElementById("visToggles").innerHTML = '<span class="hint">表示する工程</span>'+MODULES.filter(m=>m.key!=="sales").map(m=>
+    `<label class="check"><input type="checkbox" data-vis="${m.key}" ${S.visible[m.key]!==false?"checked":""}> ${m.name}</label>`).join("");
+  document.getElementById("tabs").innerHTML = MODULES.filter(m=>m.key==="sales"||S.visible[m.key]!==false).map(m=>
     `<button type="button" class="tab" role="tab" id="tab-${m.key}" aria-selected="${m.key===activeTab}" data-tab="${m.key}">${m.name}${m.ready?"":'<span class="soon">準備中</span>'}</button>`).join("");
 }
 function renderInputs(){
@@ -334,7 +345,9 @@ function renderInputs(){
         <div class="fields">
           <div class="field full"><label for="f-project.name">物件名</label><input id="f-project.name" data-path="project.name" type="text" value="${esc(S.project.name)}"></div>
           ${numField("総戸数","project.units","戸",{step:1})}
-          ${numField("平均販売価格","project.avgPrice","万円",{step:10})}
+          ${numField("平均専有面積","project.area","㎡",{step:0.1})}
+          ${numField("平均坪単価","project.tsubo","万円/坪",{step:1})}
+          <div class="field full derived"><span class="hint">平均販売価格（自動計算）</span><span class="num"><b>${fmt(unitPrice(S.project))}</b> 万円　<span class="hint">${fmt(S.project.area/TSUBO,2)}坪 × ${fmt(S.project.tsubo)}万円</span></span></div>
         </div>
       </fieldset>
       <fieldset><legend>スケジュール</legend>
@@ -508,6 +521,7 @@ function renderGantt(R){
   const under = R&&R.U? [{name:"アンダー販売", ready:true, key:"sales", si:R.U.si, ei:R.U.ei, color:"var(--under)"}] : [];
   if(R) sales.si=R.adI;
   const list=[items[0],items[1],items[2],...under,sales,items[3]].map(it=>it.ready?it:{...it,si:validYm(it.s)?ym2i(it.s):null,ei:validYm(it.e)?ym2i(it.e):null});
+  const shown=list.filter(it=>it.key==="sales"||S.visible[it.key]!==false); list.length=0; list.push(...shown);
   const all=list.flatMap(it=>[it.si,it.ei,it.ti]).filter(v=>v!=null);
   if(!all.length){document.getElementById("gantt").innerHTML="";return;}
   const a=Math.min(...all), b=Math.max(...all)+1, span=b-a;
@@ -529,9 +543,10 @@ document.addEventListener("change",e=>{
   const t=e.target;
   if(t.dataset.path){ set(t.dataset.path, t.type==="checkbox"? t.checked : t.type==="number"? (t.value===""?0:+t.value) : t.value); }
   else if(t.dataset.ph!=null){ const p=S.phases[+t.dataset.ph]; p[t.dataset.k]= t.type==="number"?+t.value:t.value; }
+  else if(t.dataset.vis){ S.visible[t.dataset.vis]=t.checked; save(); renderTabs(); renderInputs(); render(); return; }
   else if(t.dataset.ym){ if(t.value==="") delete S.adOverride[t.dataset.ym]; else S.adOverride[t.dataset.ym]=+t.value; }
   else return;
-  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|sales\.(adStart|collectStart))/.test(t.dataset.path||"")) renderInputs(); render();
+  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo)|sales\.(adStart|collectStart))/.test(t.dataset.path||"")) renderInputs(); render();
 });
 document.addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t)return;
@@ -552,7 +567,7 @@ let pasteArmed=false;
 document.addEventListener("paste",e=>{
   if(!pasteArmed && e.target.closest("input")) return;
   const txt=e.clipboardData?.getData("text")||"";
-  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
+  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
   catch(_){ if(pasteArmed) toast("設定の形式ではありません"); }
   pasteArmed=false;
 });
@@ -573,7 +588,7 @@ const safeName = () => (S.project.name||"販売計画").replace(/[\\/:*?"<>|]/g,
 
 function assumptionRows(R){
   const s=S.sales;
-  return [["物件名",S.project.name],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
+  return [["物件名",S.project.name],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
     ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],
     ["広告費率",s.adRate+" %"],["反響単価",s.cpa+" 万円/件"],["自然反響",s.organic+" 件/月"],["来場率",s.visitRate+" %"],
@@ -625,8 +640,9 @@ async function buildPptx(){
   sl.addText(`作成日 ${new Date().toLocaleDateString("ja-JP")}`,{x:0.95,y:4.1,w:6,h:0.4,fontFace:F,fontSize:12,color:C.mut});
 
   // 2 全体工程
-  sl=pptx.addSlide(); title(sl,"全体工程","用地取得から引渡しまでのスケジュール");
-  const items=[["用地取得",S.schedule.land],["設計",S.schedule.design],["施工",S.schedule.build],...(R.U?[["アンダー販売","U"]]:[]),["販売",null],["竣工・引渡し",S.schedule.handover]]
+  sl=pptx.addSlide(); title(sl,"全体工程","事業スケジュール");
+  const V=k=>S.visible[k]!==false;
+  const items=[...(V("land")?[["用地取得",S.schedule.land]]:[]),...(V("design")?[["設計",S.schedule.design]]:[]),...(V("build")?[["施工",S.schedule.build]]:[]),...(R.U?[["アンダー販売","U"]]:[]),["販売",null],...(V("handover")?[["竣工・引渡し",S.schedule.handover]]:[])]
     .map(([n,sc])=> sc==="U"? {n,si:R.U.si,ei:R.U.ei,ready:true,col:"8D8197"}
       : sc? {n,si:validYm(sc.start)?ym2i(sc.start):null,ei:validYm(sc.end)?ym2i(sc.end):null,ready:false}
       : {n,si:R.adI,ei:so??R.rows.at(-1).i,ready:true,sales:true});
