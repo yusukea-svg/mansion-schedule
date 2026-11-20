@@ -128,6 +128,12 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 .sctable input[type=radio]{width:auto;accent-color:var(--accent)}
 tr.act td{background:var(--surface-2)}
 .scgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.radios{display:flex;flex-wrap:wrap;gap:4px 14px}
+.radios .check{font-size:.8rem}
+.radios input{accent-color:var(--accent)}
+.subh{margin:14px 0 6px}
+.cumtbl th,.cumtbl td{padding:4px 7px}
+.cumtbl th:first-child,.cumtbl td:first-child{position:sticky;left:0;background:var(--bg);z-index:1}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -197,6 +203,8 @@ tr.act td{background:var(--surface-2)}
           </div>
         </div>
         <div class="scroll"><svg id="chart" viewBox="0 0 900 300" role="img" aria-label="月間契約数と累計契約率のグラフ" style="width:100%;min-width:560px;height:auto;display:block"></svg></div>
+        <h3 class="subh">反響・来場・契約の累計（その月までの合計）</h3>
+        <div class="scroll"><table id="cumTbl" class="cumtbl"></table></div>
       </section>
 
       <section class="panel" aria-labelledby="h-phase">
@@ -231,7 +239,7 @@ const SAMPLE = {
     handover:{start:"2029-03", end:"2029-03"}
   },
   under:{on:true, start:"2027-01", end:"2027-03", units:10, adj:0},
-  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adRate:2.0, cpa:4.0, organic:15,
+  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adMode:"rate", adRate:2.0, adPerUnit:120, cpa:4.0, organic:15,
          visitRate:20, closeRate:8, launchClose:18, retain:50, preRetain:65, extendRate:100},
   phases:[
     {name:"第1期", start:"2027-06", units:40, adj:0},
@@ -297,12 +305,12 @@ function simulateSales(st){
   const colI=validYm(s.collectStart)? Math.max(adI,ym2i(s.collectStart)) : adI;
   const startI=Math.min(adI,saleI,U?U.si:Infinity), limit=startI+84;
   // 広告予算の配分（広告開始〜完売目標）。アンダー販売分は広告予算の対象外
-  const budget=phaseRev*s.adRate/100;
+  const budget= s.adMode==="perUnit" ? phaseSupply*(+s.adPerUnit||0) : phaseRev*s.adRate/100;
   const launchSet=new Set(P.map(p=>p.si));
   const weight=i=> i<adI||i>tgtI ? 0 : (i<saleI?1.6 : launchSet.has(i)?1.4 : i>tgtI-3?0.8 : 1);
   let sumW=0; for(let i=startI;i<=tgtI;i++) sumW+=weight(i);
   const avgAd = sumW? budget/sumW : 0;
-  const rows=[]; let pool=0, inqStock=0, sold=0, cum=0, selloutI=null;
+  const rows=[]; let pool=0, inqStock=0, sold=0, cum=0, selloutI=null, cumInq=0, cumVis=0;
   for(let i=startI;i<=limit;i++){
     const ym=i2ym(i);
     let ad = i<adI ? 0 : i>tgtI ? avgAd*s.extendRate/100 : avgAd*weight(i);
@@ -331,7 +339,8 @@ function simulateSales(st){
     const tgtCum = i<saleI? underNow : (U?U.units:0)+Math.min(1,(i-saleI+1)/(tgtI-saleI+1))*phaseSupply;
     const stage = i<saleI ? (uc>0||(U&&i>=U.si&&i<=U.ei)? "アンダー販売" : i<adI? "準備" : i<colI? "広告開始" : "事前案内")
       : (avail>0? "販売中" : (sold>=supply?"完売":"次期待ち"));
-    rows.push({i,ym,ad,isOv,inq,vis,pool,c,uc,sold,rate:sold/supply,stock:avail-pc,tgtCum,rev,cum,stage,launch:launchSet.has(i),pre:i<saleI,noAd:i<adI});
+    cumInq+=inq; cumVis+=vis;
+    rows.push({i,ym,ad,isOv,inq,vis,cumInq,cumVis,pool,c,uc,sold,rate:sold/supply,stock:supply-sold,tgtCum,rev,cum,stage,launch:launchSet.has(i),pre:i<saleI,noAd:i<adI});
     if(sold>=supply){ selloutI=i; break; }
   }
   const tot=k=>rows.reduce((a,r)=>a+r[k],0);
@@ -407,7 +416,11 @@ function renderInputs(){
       </fieldset>
       <fieldset><legend>広告</legend>
         <div class="fields">
-          ${numField("広告費率","sales.adRate","%",{step:0.1,hint:"総販売額に対する広告予算"})}
+          <div class="field full"><span class="hint">広告予算の基準</span>
+            <div class="radios"><label class="check"><input type="radio" name="admode" data-path="sales.adMode" value="rate" ${S.sales.adMode!=="perUnit"?"checked":""}> 販売額に対する率</label>
+            <label class="check"><input type="radio" name="admode" data-path="sales.adMode" value="perUnit" ${S.sales.adMode==="perUnit"?"checked":""}> 1戸あたり金額</label></div></div>
+          ${numField("広告費率","sales.adRate","%",{step:0.1,hint:adHint("rate")})}
+          ${numField("1戸あたり広告費","sales.adPerUnit","万円/戸",{step:5,hint:adHint("perUnit")})}
           ${numField("自然反響","sales.organic","件/月",{step:1,hint:"現地看板・紹介など"})}
           ${numField("目標超過後の広告","sales.extendRate","%",{step:5,hint:"平均月額に対する割合"})}
         </div>
@@ -440,6 +453,12 @@ function renderInputs(){
     </div>`;
   }
 }
+function adHint(mode){
+  const s=S.sales, units=S.phases.reduce((a,p)=>a+(+p.units||0),0), rev=units*unitPrice(S.project);
+  if(!units||!rev) return "";
+  if(s.adMode===mode) return mode==="rate"?"販売額（アンダー販売を除く）に掛けて予算を決めます":"一般販売の戸数に掛けて予算を決めます";
+  return mode==="rate" ? `予算換算で ${fmt(s.adPerUnit*units/rev*100,2)}% 相当` : `予算換算で ${fmt(rev*s.adRate/100/units)}万円/戸 相当`;
+}
 function schedWarn(){
   const w=[], s=S.sales, ad=validYm(s.adStart)?ym2i(s.adStart):null, col=validYm(s.collectStart)?ym2i(s.collectStart):null;
   const first=S.phases.filter(p=>validYm(p.start)).map(p=>ym2i(p.start)).sort((a,b)=>a-b)[0];
@@ -471,7 +490,7 @@ function render(){
   renderGantt(R);
   if(!R){ document.getElementById("kpis").innerHTML='<p class="warn">広告開始・完売目標・期の販売開始を入力してください。</p>'; return; }
   document.getElementById("lgUnder").hidden=!R.U;
-  renderKpis(R); renderScenarios(R); renderChart(R); renderPhases(R); renderMonths(R);
+  renderKpis(R); renderScenarios(R); renderChart(R); renderCum(R); renderPhases(R); renderMonths(R);
 }
 
 function compNote(R){
@@ -505,6 +524,12 @@ function renderScenarios(Ract){
     g+=`<path d="${o.R.rows.map((r,j)=>`${j?"L":"M"}${x(r.i)},${y(r.rate)}`).join("")}" fill="none" stroke="var(${SC_COLORS[o.k%4]})" stroke-width="${act?2.4:1.4}" opacity="${act?1:.85}"/>`;
     const L=o.R.rows.at(-1); g+=`<circle cx="${x(L.i)}" cy="${y(L.rate)}" r="${act?3.5:2.5}" fill="var(${SC_COLORS[o.k%4]})"><title>${esc(o.c.name)} ${i2lbl(L.i)}</title></circle>`; });
   document.getElementById("scChart").innerHTML=g;
+}
+function renderCum(R){
+  const rs=R.rows;
+  const row=(lbl,f)=>`<tr><td>${lbl}</td>${rs.map(r=>`<td class="num">${fmt(f(r))}</td>`).join("")}</tr>`;
+  document.getElementById("cumTbl").innerHTML=`<thead><tr><th>年月</th>${rs.map(r=>`<th>${i2short(r.i)}</th>`).join("")}</tr></thead><tbody>
+    ${row("反響",r=>r.cumInq)}${row("来場",r=>r.cumVis)}${row("契約",r=>r.sold)}</tbody>`;
 }
 function renderKpis(R){
   const so=R.selloutI, delay = so==null? null : so-R.tgtI;
@@ -584,7 +609,7 @@ function renderMonths(R){
       <td class="num ${gap<0?"neg":gap>0?"pos":""}">${r.i<R.saleI?"—":(gap>0?"+":"")+gap}</td>
       <td class="num">${fmt(r.cum/10000,2)}</td></tr>`;}).join("");
   const T=R;
-  document.getElementById("monthTbl").innerHTML=`<thead><tr><th>年月</th><th>状況</th><th>広告費(万円)</th><th>反響</th><th>来場</th><th>見込客(翌月へ)</th><th>契約</th><th>累計契約</th><th>累計率</th><th>在庫</th><th>目標累計</th><th>目標差</th><th>累計契約額(億円)</th></tr></thead>
+  document.getElementById("monthTbl").innerHTML=`<thead><tr><th>年月</th><th>状況</th><th>広告費(万円)</th><th>反響</th><th>来場</th><th>見込客(翌月へ)</th><th>契約</th><th>累計契約</th><th>累計率</th><th>残戸数</th><th>目標累計</th><th>目標差</th><th>累計契約額(億円)</th></tr></thead>
   <tbody>${body}</tbody><tfoot><tr><th>合計</th><th></th><th class="num">${fmt(T.adTotal)}</th><th class="num">${fmt(T.inqTotal)}</th><th class="num">${fmt(T.visTotal)}</th><th></th><th class="num">${T.cTotal}</th><th></th><th></th><th></th><th></th><th></th><th class="num">${fmt(T.revTotal/10000,2)}</th></tr></tfoot>`;
 }
 
@@ -631,7 +656,7 @@ document.addEventListener("change",e=>{
   else if(t.dataset.sc!=null){ const c=S.scenarios[+t.dataset.sc]; c[t.dataset.k]= t.type==="number"? +t.value : t.value; save(); render(); return; }
   else if(t.dataset.ym){ if(t.value==="") delete S.adOverride[t.dataset.ym]; else S.adOverride[t.dataset.ym]=+t.value; }
   else return;
-  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo)|sales\.(adStart|collectStart))/.test(t.dataset.path||"")) renderInputs(); render();
+  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo|units)|sales\.(adStart|collectStart|adMode|adRate|adPerUnit))/.test(t.dataset.path||"")) renderInputs(); render();
 });
 document.addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t)return;
@@ -643,8 +668,8 @@ document.addEventListener("click",e=>{
   if(t.id==="btnClearOv"){ S.adOverride={}; save(); render(); toast("広告費の手入力を戻しました"); return; }
   if(t.id==="btnJson"){ copy(JSON.stringify(S,null,1),"設定をコピーしました"); return; }
   if(t.id==="btnCsv"){ const R=simulateSales(S); if(!R)return;
-    const h="年月,状況,広告費(万円),反響,来場,見込客,契約,累計契約,累計率,在庫,目標累計";
-    const lines=R.rows.map(r=>[r.ym,r.stage,Math.round(r.ad),r.inq.toFixed(1),r.vis.toFixed(1),r.pool.toFixed(1),r.c,r.sold,(r.rate*100).toFixed(1),r.stock,Math.round(r.tgtCum)].join(","));
+    const h="年月,状況,広告費(万円),反響,来場,見込客,契約,累計契約,累計率,残戸数,目標累計,累計反響,累計来場";
+    const lines=R.rows.map(r=>[r.ym,r.stage,Math.round(r.ad),r.inq.toFixed(1),r.vis.toFixed(1),r.pool.toFixed(1),r.c,r.sold,(r.rate*100).toFixed(1),r.stock,Math.round(r.tgtCum),Math.round(r.cumInq),Math.round(r.cumVis)].join(","));
     copy([h,...lines].join("\n"),"月次表をコピーしました。Excel等に貼り付けできます"); return; }
   if(t.id==="btnPaste"){ toast("コピーした設定をこのページ上で貼り付け（⌘V / Ctrl+V）してください"); pasteArmed=true; return; }
 });
@@ -676,19 +701,19 @@ function assumptionRows(R){
   return [["物件名",S.project.name],["シナリオ",S.scenarios[S.activeScenario]?.name||""],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
     ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],...(keyDates().comp!=null?[["竣工",i2lbl(keyDates().comp)]]:[]),...(keyDates().ho!=null?[["引渡し",i2lbl(keyDates().ho)]]:[]),
-    ["広告費率",s.adRate+" %"],["反響単価",s.cpa+" 万円/件"],["自然反響",s.organic+" 件/月"],["来場率",s.visitRate+" %"],
+    ["広告予算の基準",s.adMode==="perUnit"?"1戸あたり金額":"販売額に対する率"],(s.adMode==="perUnit"?["1戸あたり広告費",s.adPerUnit+" 万円/戸"]:["広告費率",s.adRate+" %"]),["反響単価",s.cpa+" 万円/件"],["自然反響",s.organic+" 件/月"],["来場率",s.visitRate+" %"],
     ["成約率",s.closeRate+" %"],["期開始月の成約率",(s.launchClose??s.closeRate)+" %"],["見込客残存率",s.retain+" %"],["事前残存率",s.preRetain+" %"],["目標超過後の広告",s.extendRate+" %"]];
 }
 
 function buildXlsx(){
   const R=simulateSales(S); if(!R) throw new Error("入力が不足しています");
   const wb=XLSX.utils.book_new();
-  const head=["年月","状況","広告費(万円)","反響","来場","見込客(翌月へ)","契約","累計契約","累計契約率","在庫","目標累計","目標差","当月契約額(万円)","累計契約額(万円)"];
-  const rows=R.rows.map(r=>[i2lbl(r.i),r.stage,Math.round(r.ad),+r.inq.toFixed(1),+r.vis.toFixed(1),+r.pool.toFixed(1),r.c,r.sold,+(r.rate).toFixed(4),r.stock,Math.round(r.tgtCum),r.i<R.saleI?null:r.sold-Math.round(r.tgtCum),Math.round(r.rev),Math.round(r.cum)]);
+  const head=["年月","状況","広告費(万円)","反響","来場","見込客(翌月へ)","契約","累計契約","累計契約率","残戸数","目標累計","目標差","当月契約額(万円)","累計契約額(万円)","累計反響","累計来場"];
+  const rows=R.rows.map(r=>[i2lbl(r.i),r.stage,Math.round(r.ad),+r.inq.toFixed(1),+r.vis.toFixed(1),+r.pool.toFixed(1),r.c,r.sold,+(r.rate).toFixed(4),r.stock,Math.round(r.tgtCum),r.i<R.saleI?null:r.sold-Math.round(r.tgtCum),Math.round(r.rev),Math.round(r.cum),Math.round(r.cumInq),Math.round(r.cumVis)]);
   const n=rows.length;
   const tot=["合計","",{f:`SUM(C2:C${n+1})`},{f:`SUM(D2:D${n+1})`},{f:`SUM(E2:E${n+1})`},"",{f:`SUM(G2:G${n+1})`},"","","","","",{f:`SUM(M2:M${n+1})`},""];
   const ws=XLSX.utils.aoa_to_sheet([head,...rows,tot]);
-  ws["!cols"]=[12,9,12,8,8,13,7,9,11,7,9,8,15,15].map(w=>({wch:w}));
+  ws["!cols"]=[12,9,12,8,8,13,7,9,11,7,9,8,15,15,9,9].map(w=>({wch:w}));
   for(let k=2;k<=n+1;k++){ const c=ws["I"+k]; if(c) c.z="0.0%"; ["C","M","N"].forEach(col=>{ if(ws[col+k]) ws[col+k].z="#,##0"; }); }
   ws["!freeze"]={xSplit:1,ySplit:1};
   XLSX.utils.book_append_sheet(wb,ws,"月次計画表");
@@ -803,20 +828,20 @@ async function buildPptx(){
   /* ===== 2枚目：月次計画表（1枚に収める） ===== */
   sl=pptx.addSlide();
   head(sl,`${safeName()}　月次計画表`,`${i2lbl(R.rows[0].i)}〜${i2lbl(R.rows.at(-1).i)}（${R.rows.length}ヶ月）`);
-  const cols=["年月","状況","広告費(万円)","反響","来場","契約","累計契約","累計率","在庫","目標累計","目標差","累計契約額(億円)"];
+  const cols=["年月","状況","広告費(万円)","反響","来場","累計反響","累計来場","契約","累計契約","累計率","残戸数","目標累計","目標差","累計契約額(億円)"];
   const toRow=r=>{ const g=r.sold-Math.round(r.tgtCum);
-    return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),fmt(r.inq),fmt(r.vis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
+    return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),fmt(r.inq),fmt(r.vis),fmt(r.cumInq),fmt(r.cumVis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
       r.i<R.saleI?"—":{text:(g>0?"+":"")+g,options:{color:g<0?C.bad:g>0?C.good:C.ink}},fmt(r.cum/10000,2)]; };
   const n=R.rows.length, twoCol=n>30;
   const avail=7.15-1.15;
   if(!twoCol){
     const rh=Math.min(0.3,avail/(n+2)), fs=rh>=0.26?9:rh>=0.2?8:7;
     const hdr=cols.map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
-    const tot=["合計","",fmt(R.adTotal),fmt(R.inqTotal),fmt(R.visTotal),{text:String(R.cTotal),options:{bold:true}},"","","","","",fmt(R.revTotal/10000,2)].map(v=>typeof v==="string"?{text:v,options:{bold:true,fill:{color:C.bg2}}}:{...v,options:{...v.options,fill:{color:C.bg2}}});
+    const tot=["合計","",fmt(R.adTotal),fmt(R.inqTotal),fmt(R.visTotal),"","",{text:String(R.cTotal),options:{bold:true}},"","","","","",fmt(R.revTotal/10000,2)].map(v=>typeof v==="string"?{text:v,options:{bold:true,fill:{color:C.bg2}}}:{...v,options:{...v.options,fill:{color:C.bg2}}});
     sl.addTable([hdr,...R.rows.map(toRow),tot],{x:0.4,y:1.15,w:12.53,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
   } else {
     // 31ヶ月以上は左右2段組（列を絞る）
-    const pick=[0,2,5,6,7,8,10];
+    const pick=[0,2,7,8,9,10,12];
     const hdr=pick.map(k=>({text:cols[k],options:{color:C.mut,fill:{color:C.bg2}}}));
     const half=Math.ceil(n/2), rh=Math.min(0.24,avail/(half+1)), fs=rh>=0.2?8:rh>=0.15?7:6;
     [R.rows.slice(0,half),R.rows.slice(half)].forEach((chunk,k)=>{
