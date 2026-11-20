@@ -251,7 +251,7 @@ const oku = man => man>=10000 ? `${fmt(man/10000,2)}億円` : `${fmt(man)}万円
 const validYm = s => /^\d{4}-\d{2}$/.test(s||"");
 
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; o.schedule={...structuredClone(SAMPLE.schedule),...(o.schedule||{})}; if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
   return structuredClone(SAMPLE);
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
@@ -579,7 +579,7 @@ let pasteArmed=false;
 document.addEventListener("paste",e=>{
   if(!pasteArmed && e.target.closest("input")) return;
   const txt=e.clipboardData?.getData("text")||"";
-  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
+  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},schedule:{...structuredClone(SAMPLE.schedule),...(o.schedule||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
   catch(_){ if(pasteArmed) toast("設定の形式ではありません"); }
   pasteArmed=false;
 });
@@ -633,101 +633,115 @@ function buildXlsx(){
 
 async function buildPptx(){
   const R=simulateSales(S); if(!R) throw new Error("入力が不足しています");
-  const pptx=new PptxGenJS(); pptx.layout="LAYOUT_WIDE"; // 13.33 x 7.5 in
-  const C={ink:"262A29",mut:"6B7270",acc:"3C5A5E",soft:"E3EAEA",tgt:"9B7A35",line:"DCDFDD",bg2:"F0F1F0",pre:"C9CFCD",good:"3E6B4F",warn:"9B7A35",bad:"9A4B3C"};
+  const pptx=new PptxGenJS(); pptx.layout="LAYOUT_WIDE"; // 13.33 x 7.5 in。2枚構成：①計画の全体像 ②月次計画表
+  const C={ink:"262A29",mut:"6B7270",acc:"3C5A5E",tgt:"9B7A35",line:"DCDFDD",bg2:"F0F1F0",pre:"C9CFCD",good:"3E6B4F",warn:"9B7A35",bad:"9A4B3C",und:"8D8197"};
   const F="Yu Gothic";
-  const title=(sl,t,sub)=>{ sl.addText(t,{x:0.5,y:0.3,w:12.3,h:0.6,fontFace:F,fontSize:24,bold:true,color:C.ink});
-    if(sub) sl.addText(sub,{x:0.5,y:0.85,w:12.3,h:0.35,fontFace:F,fontSize:12,color:C.mut});
-    sl.addShape(pptx.ShapeType.line,{x:0.5,y:1.25,w:12.3,h:0,line:{color:C.ink,width:1}});
-    sl.addText(safeName(),{x:0.5,y:7.0,w:8,h:0.3,fontFace:F,fontSize:9,color:C.mut}); };
   const so=R.selloutI, delay=so==null?null:so-R.tgtI;
   const verdict= so==null?"期間内に完売しません": delay>0?`目標より${delay}ヶ月遅れ`: delay<0?`目標より${-delay}ヶ月前倒し`:"目標月に完売";
+  const today=new Date().toLocaleDateString("ja-JP");
+  const head=(sl,t,sub)=>{ sl.addText(t,{x:0.4,y:0.22,w:9,h:0.5,fontFace:F,fontSize:20,bold:true,color:C.ink,margin:0});
+    sl.addText(sub,{x:0.4,y:0.68,w:9,h:0.28,fontFace:F,fontSize:10.5,color:C.mut,margin:0});
+    sl.addText(`作成日 ${today}`,{x:9.9,y:0.68,w:3.03,h:0.28,fontFace:F,fontSize:9,color:C.mut,align:"right",margin:0});
+    sl.addShape(pptx.ShapeType.line,{x:0.4,y:1.02,w:12.53,h:0,line:{color:C.ink,width:1}}); };
+  const label=(sl,t,x,y,w)=>sl.addText(t,{x,y,w,h:0.24,fontFace:F,fontSize:10,bold:true,color:C.ink,margin:0});
 
-  // 1 表紙
+  /* ===== 1枚目：計画の全体像 ===== */
   let sl=pptx.addSlide();
-  sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:13.33,h:7.5,fill:{color:"FBFBFA"}});
-  sl.addShape(pptx.ShapeType.line,{x:0.95,y:3.42,w:11.4,h:0,line:{color:C.ink,width:1.5}});
-  sl.addText(safeName(),{x:0.95,y:2.5,w:11.5,h:0.9,fontFace:F,fontSize:36,bold:true,color:C.ink});
-  sl.addText("事業計画（販売計画）",{x:0.95,y:3.55,w:11.5,h:0.5,fontFace:F,fontSize:18,color:C.mut});
-  sl.addText(`作成日 ${new Date().toLocaleDateString("ja-JP")}`,{x:0.95,y:4.1,w:6,h:0.4,fontFace:F,fontSize:12,color:C.mut});
+  head(sl,`${safeName()}　販売計画`,`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）　総販売額 ${oku(R.totalRev)}　${R.supply}戸`);
 
-  // 2 全体工程
-  sl=pptx.addSlide(); title(sl,"全体工程","事業スケジュール");
+  // 左上：全体工程
+  const LX=0.4, LW=8.15;
+  label(sl,"全体工程",LX,1.15,3);
   const V=k=>S.visible[k]!==false;
   const items=[...(V("land")?[["用地取得",S.schedule.land]]:[]),...(V("design")?[["設計",S.schedule.design]]:[]),...(V("build")?[["施工",S.schedule.build]]:[]),...(R.U?[["アンダー販売","U"]]:[]),["販売",null],...(V("handover")?[["竣工・引渡し",S.schedule.handover]]:[])]
-    .map(([n,sc])=> sc==="U"? {n,si:R.U.si,ei:R.U.ei,ready:true,col:"8D8197"}
-      : sc? {n,si:validYm(sc.start)?ym2i(sc.start):null,ei:validYm(sc.end)?ym2i(sc.end):null,ready:false}
-      : {n,si:R.adI,ei:so??R.rows.at(-1).i,ready:true,sales:true});
-  const all=items.flatMap(i=>[i.si,i.ei]).concat([R.tgtI]).filter(v=>v!=null);
+    .map(([n,sc])=> sc==="U"? {n,si:R.U.si,ei:R.U.ei,col:C.und}
+      : sc? {n,si:validYm(sc.start)?ym2i(sc.start):null,ei:validYm(sc.end)?ym2i(sc.end):null,col:C.pre}
+      : {n,si:R.adI,ei:so??R.rows.at(-1).i,col:C.acc,sales:true});
+  const all=items.flatMap(i=>[i.si,i.ei]).concat([R.tgtI+1]).filter(v=>v!=null);
   const a=Math.min(...all), b=Math.max(...all)+1;
-  const gx=2.4, gw=10.4, gy=1.9, X=i=>gx+(i-a)/(b-a)*gw;
-  const rhOf=it=>it.sales?1.3:0.62; const ys=[]; let yy=gy; items.forEach(it=>{ ys.push(yy); yy+=rhOf(it); });
-  for(let i=a;i<=b;i++){ if(i%12===0||i===a){ sl.addShape(pptx.ShapeType.line,{x:X(i),y:gy-0.1,w:0,h:yy-gy+0.1,line:{color:C.line,width:0.75}});
-      sl.addText(i%12===0?`${i/12}年`:i2short(i),{x:X(i)+0.03,y:gy-0.45,w:1,h:0.3,fontFace:F,fontSize:10,color:C.mut}); } }
+  const gx=LX+1.15, gw=LW-1.15, gy=1.68, X=i=>gx+(i-a)/(b-a)*gw;
+  const rhOf=it=>it.sales?0.78:0.3; const ys=[]; let yy=gy; items.forEach(it=>{ ys.push(yy); yy+=rhOf(it); });
+  for(let i=a;i<=b;i++){ if(i%12===0){ sl.addShape(pptx.ShapeType.line,{x:X(i),y:gy-0.05,w:0,h:yy-gy,line:{color:C.line,width:0.5}});
+      sl.addText(`${i/12}年`,{x:X(i)+0.03,y:gy-0.27,w:0.8,h:0.2,fontFace:F,fontSize:8,color:C.mut,margin:0}); } }
   items.forEach((it,k)=>{ const y=ys[k];
-    sl.addText(it.n,{x:0.5,y:y+0.12,w:1.8,h:0.4,fontFace:F,fontSize:13,color:C.ink,bold:it.ready});
-    sl.addShape(pptx.ShapeType.rect,{x:gx,y:y+0.15,w:gw,h:0.38,fill:{color:C.bg2}});
+    sl.addText(it.n,{x:LX,y:y+0.02,w:1.1,h:0.22,fontFace:F,fontSize:9,color:C.ink,bold:!!it.sales,margin:0});
+    sl.addShape(pptx.ShapeType.rect,{x:gx,y:y+0.04,w:gw,h:0.18,fill:{color:C.bg2}});
     if(it.si==null||it.ei==null) return;
-    sl.addShape(pptx.ShapeType.rect,{x:X(it.si),y:y+0.18,w:Math.max(0.08,X(it.ei+1)-X(it.si)),h:0.32,fill:{color:it.col||(it.ready?C.acc:C.pre)}});
-    if(!it.sales){ sl.addText(`${i2short(it.si)}〜${i2short(it.ei)}`,{x:Math.min(X(it.si),gx+gw-1.6),y:y+0.5,w:1.6,h:0.25,fontFace:F,fontSize:9,color:C.mut}); return; }
-    const MS=salesMilestones(R), lyOf=j=>y+0.55+(j%3)*0.22;
-    MS.forEach((m,j)=>{ const ly=lyOf(j);
-      if(m.i>it.si) sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.18,w:0,h:0.32,line:{color:"FFFFFF",width:1.5}});
-      sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.5,w:0,h:ly-y-0.5+0.2,line:{color:C.mut,width:0.75}}); });
-    MS.forEach((m,j)=>{ const t=`${m.l} ${i2short(m.i)}`; sl.addText(t,{x:X(m.i)+0.03,y:lyOf(j),w:0.12+t.length*0.095,h:0.22,fontFace:F,fontSize:9,color:C.ink,margin:0,fill:{color:"FFFFFF"}}); });
-    sl.addText(`〜 完売予定 ${i2short(it.ei)}`,{x:Math.min(X(it.ei+1)+0.05,gx+gw-1.8),y:y+0.2,w:1.8,h:0.28,fontFace:F,fontSize:9,color:C.mut});
-    sl.addShape(pptx.ShapeType.line,{x:X(R.tgtI+1),y:y+0.08,w:0,h:0.5,line:{color:C.tgt,width:2}});
-    sl.addText(`完売目標 ${i2lbl(R.tgtI)}`,{x:X(R.tgtI+1)+0.05,y:y-0.2,w:2.5,h:0.28,fontFace:F,fontSize:9,color:C.tgt}); });
-  sl.addText("販売以外の工程は日付のみ（詳細試算は今後追加）",{x:0.5,y:6.6,w:12,h:0.3,fontFace:F,fontSize:10,color:C.mut});
+    const x0=X(it.si), w=Math.max(0.05,X(it.ei+1)-x0);
+    sl.addShape(pptx.ShapeType.rect,{x:x0,y:y+0.06,w,h:0.14,fill:{color:it.col}});
+    if(!it.sales){ const t=`${i2short(it.si)}〜${i2short(it.ei)}`; sl.addText(t,{x:Math.min(x0+w+0.05,gx+gw-1.0),y:y+0.03,w:1.0,h:0.2,fontFace:F,fontSize:7,color:C.mut,margin:0}); return; }
+    const MS=salesMilestones(R), lyOf=j=>y+0.26+j*0.16;
+    MS.forEach((m,j)=>{ if(m.i>it.si) sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.06,w:0,h:0.14,line:{color:"FFFFFF",width:1.25}});
+      sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.2,w:0,h:lyOf(j)-y-0.2+0.12,line:{color:C.mut,width:0.5}}); });
+    MS.forEach((m,j)=>{ const t=`${m.l} ${i2short(m.i)}`; sl.addText(t,{x:X(m.i)+0.03,y:lyOf(j),w:0.1+t.length*0.075,h:0.16,fontFace:F,fontSize:7,color:C.ink,margin:0,fill:{color:"FFFFFF"}}); });
+    sl.addText(`完売予定 ${i2short(it.ei)}`,{x:Math.min(x0+w+0.05,gx+gw-1.1),y:y+0.03,w:1.1,h:0.2,fontFace:F,fontSize:7,color:C.mut,margin:0});
+    sl.addShape(pptx.ShapeType.line,{x:X(R.tgtI+1),y:y-0.02,w:0,h:0.3,line:{color:C.tgt,width:1.5}});
+    sl.addText(`完売目標 ${i2short(R.tgtI)}`,{x:X(R.tgtI+1)+0.04,y:y+0.24,w:1.1,h:0.18,fontFace:F,fontSize:7,color:C.tgt,margin:0}); });
 
-  // 3 販売計画サマリー
-  sl=pptx.addSlide(); title(sl,"販売計画サマリー",`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）`);
-  const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
-  const kp=[["完売予定",so==null?"—":i2lbl(so),`目標 ${i2lbl(R.tgtI)}`],["総販売額",oku(R.totalRev),`${R.supply}戸・平均${fmt(R.totalRev/R.supply)}万円`],
-    ["広告費 合計",oku(R.adTotal),`売上比 ${fmt(R.adTotal/R.totalRev*100,2)}%`],["1戸あたり広告費",`${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`,"契約1件の獲得コスト"],
-    ["月間契約ペース",`${fmt((R.cTotal-R.ucTotal)/saleMonths,1)}戸`,`必要 ${fmt(R.phaseSupply/(R.tgtI-R.saleI+1),1)}戸/月`],["反響→来場→契約",`${fmt(R.inqTotal)}→${fmt(R.visTotal)}→${fmt(R.cTotal-R.ucTotal)}`,`反響あたり契約 ${fmt((R.cTotal-R.ucTotal)/Math.max(1,R.inqTotal)*100,1)}%`]];
-  kp.forEach(([k,v,s],j)=>{ const x=0.5+(j%3)*2.75, y=1.55+Math.floor(j/3)*1.55;
-    sl.addShape(pptx.ShapeType.rect,{x,y,w:2.6,h:1.4,fill:{color:C.bg2}});
-    sl.addText(k,{x:x+0.15,y:y+0.1,w:2.3,h:0.3,fontFace:F,fontSize:10,color:C.mut});
-    sl.addText(v,{x:x+0.15,y:y+0.42,w:2.3,h:0.5,fontFace:F,fontSize:18,bold:true,color:C.ink,fit:"shrink"});
-    sl.addText(s,{x:x+0.15,y:y+0.95,w:2.3,h:0.3,fontFace:F,fontSize:9,color:C.mut}); });
-  const ar=assumptionRows(R).slice(3);
-  sl.addText("前提条件",{x:8.95,y:1.45,w:3.9,h:0.35,fontFace:F,fontSize:12,bold:true,color:C.ink});
-  sl.addTable(ar.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:String(v),options:{align:"right"}}]),
-    {x:8.95,y:1.85,w:3.9,colW:[2.2,1.7],fontFace:F,fontSize:9,color:C.ink,rowH:0.27,border:{type:"solid",color:C.line,pt:0.5}});
-
-  // 4 契約推移（棒＋累計線）
-  sl=pptx.addSlide(); title(sl,"契約推移","月間契約数（棒）と累計契約率・目標ペース（線）");
+  // 左下：契約推移
+  const cy=Math.max(yy+0.15,3.9);
+  label(sl,"契約推移",LX,cy,3);
   const labels=R.rows.map(r=>i2short(r.i));
-  const tgtPct=R.rows.map(r=>+(r.tgtCum/R.supply*100).toFixed(1));
   sl.addChart([
     {type:pptx.ChartType.bar,data: R.U? [{name:"月間契約数",labels,values:R.rows.map(r=>r.c-r.uc)},{name:"アンダー販売",labels,values:R.rows.map(r=>r.uc)}] : [{name:"月間契約数",labels,values:R.rows.map(r=>r.c)}],
-      options:{chartColors:[C.acc,"8D8197"],barGapWidthPct:40,barGrouping:"stacked"}},
-    {type:pptx.ChartType.line,data:[{name:"累計契約率(%)",labels,values:R.rows.map(r=>+(r.rate*100).toFixed(1))},{name:"目標ペース(%)",labels,values:tgtPct}],
-      options:{chartColors:[C.ink,C.tgt],lineSize:2,lineDataSymbol:"none",secondaryValAxis:true,secondaryCatAxis:true}}
-  ],{x:0.5,y:1.45,w:12.3,h:5.4,fontFace:F,showLegend:true,legendPos:"t",legendFontSize:10,
-    valAxes:[{showValAxisTitle:true,valAxisTitle:"戸",valAxisMinVal:0,valAxisLabelFontSize:9},{showValAxisTitle:true,valAxisTitle:"累計 %",valAxisMinVal:0,valAxisMaxVal:100,valGridLine:{style:"none"},valAxisLabelFontSize:9}],
-    catAxes:[{catAxisLabelFontSize:8},{catAxisHidden:true}]});
+      options:{chartColors:[C.acc,C.und],barGapWidthPct:40,barGrouping:"stacked"}},
+    {type:pptx.ChartType.line,data:[{name:"累計契約率(%)",labels,values:R.rows.map(r=>+(r.rate*100).toFixed(1))},{name:"目標ペース(%)",labels,values:R.rows.map(r=>+(r.tgtCum/R.supply*100).toFixed(1))}],
+      options:{chartColors:[C.ink,C.tgt],lineSize:1.5,lineDataSymbol:"none",secondaryValAxis:true,secondaryCatAxis:true}}
+  ],{x:LX-0.1,y:cy+0.2,w:LW+0.2,h:7.2-cy-0.25,fontFace:F,showLegend:true,legendPos:"t",legendFontSize:8,
+    valAxes:[{valAxisMinVal:0,valAxisLabelFontSize:7},{valAxisMinVal:0,valAxisMaxVal:100,valGridLine:{style:"none"},valAxisLabelFontSize:7}],
+    catAxes:[{catAxisLabelFontSize:7},{catAxisHidden:true}]});
 
-  // 5 期別
-  sl=pptx.addSlide(); title(sl,"期別の販売計画","初月契約率は70%を目安に色分け");
-  const hd=["期","販売開始","戸数","平均価格(万円)","販売額","初月契約","初月契約率","期完売"].map(t=>({text:t,options:{bold:true,fill:{color:C.bg2},color:C.mut}}));
+  // 右：主要指標
+  const RX=8.85, RW=4.08;
+  label(sl,"主要指標",RX,1.15,3);
+  const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
+  const kp=[["完売予定",so==null?"—":i2lbl(so)],["完売目標",i2lbl(R.tgtI)],["総販売額",oku(R.totalRev)],["平均販売価格",`${fmt(S.project.avgPrice)}万円`],
+    ["広告費 合計",`${oku(R.adTotal)}（${fmt(R.adTotal/R.totalRev*100,2)}%）`],["1戸あたり広告費",`${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`],
+    ["月間契約ペース",`${fmt((R.cTotal-R.ucTotal)/saleMonths,1)}戸（必要 ${fmt(R.phaseSupply/(R.tgtI-R.saleI+1),1)}戸）`],["反響→来場→契約",`${fmt(R.inqTotal)}→${fmt(R.visTotal)}→${fmt(R.cTotal-R.ucTotal)}`]];
+  sl.addTable(kp.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:v,options:{bold:true,align:"right"}}]),
+    {x:RX,y:1.42,w:RW,colW:[1.45,RW-1.45],fontFace:F,fontSize:9,color:C.ink,rowH:0.24,border:{type:"solid",color:C.line,pt:0.5},margin:0.04});
+
+  // 右中：期別
+  const py=1.42+kp.length*0.24+0.2;
+  label(sl,"期別",RX,py,3);
+  const hd=["期","販売開始","戸数","平均価格","初月契約率","期完売"].map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
   const body=R.P.map(p=>{ const fr=p.first/p.units*100; const col=fr>=70?C.good:fr>=50?C.warn:C.bad;
-    return [p.name,i2lbl(p.si),String(p.units),fmt(p.price),oku(p.units*p.price),`${p.first}戸`,{text:`${fmt(fr,0)}%`,options:{color:col,bold:true}},p.done!=null?i2lbl(p.done):"未完売"]; });
-  if(R.U) body.unshift([R.U.name,`${i2short(R.U.si)}〜${i2short(R.U.ei)}`,String(R.U.units),fmt(R.U.price),oku(R.U.units*R.U.price),"—","対象外",R.U.done!=null?i2lbl(R.U.done):"—"]);
-  sl.addTable([hd,...body],{x:0.5,y:1.55,w:12.3,fontFace:F,fontSize:12,color:C.ink,rowH:0.45,align:"center",border:{type:"solid",color:C.line,pt:0.5}});
+    return [p.name,i2short(p.si),String(p.units),fmt(p.price),{text:`${fmt(fr,0)}%`,options:{color:col,bold:true}},p.done!=null?i2short(p.done):"未完売"]; });
+  if(R.U) body.unshift(["アンダー",`${i2short(R.U.si)}〜`,String(R.U.units),fmt(R.U.price),"—",R.U.done!=null?i2short(R.U.done):"—"]);
+  sl.addTable([hd,...body],{x:RX,y:py+0.27,w:RW,colW:[0.72,0.68,0.45,0.75,0.78,0.7],fontFace:F,fontSize:8,color:C.ink,rowH:0.22,align:"center",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
 
-  // 6〜 月次計画表（20行ずつ）
-  const mh=["年月","状況","広告費(万円)","反響","来場","契約","累計契約","累計率","在庫","目標累計","目標差"].map(t=>({text:t,options:{bold:true,fill:{color:C.bg2},color:C.mut}}));
-  const per=20;
-  for(let s0=0;s0<R.rows.length;s0+=per){
-    const chunk=R.rows.slice(s0,s0+per);
-    sl=pptx.addSlide(); title(sl,`月次計画表${R.rows.length>per?`（${Math.floor(s0/per)+1}/${Math.ceil(R.rows.length/per)}）`:""}`,`${i2lbl(chunk[0].i)}〜${i2lbl(chunk.at(-1).i)}`);
-    sl.addTable([mh,...chunk.map(r=>{ const g=r.sold-Math.round(r.tgtCum);
-      return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),fmt(r.inq),fmt(r.vis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
-        r.i<R.saleI?"—":{text:(g>0?"+":"")+g,options:{color:g<0?C.bad:g>0?C.good:C.ink}}]; })],
-      {x:0.5,y:1.4,w:12.3,fontFace:F,fontSize:9,color:C.ink,rowH:0.255,align:"right",border:{type:"solid",color:C.line,pt:0.5}});
+  // 右下：前提条件（主なもの）
+  const ay=py+0.27+(body.length+1)*0.22+0.2;
+  label(sl,"前提条件",RX,ay,3);
+  const s=S.sales;
+  const ar=[["平均専有面積・坪単価",`${fmt(S.project.area,1)}㎡・${fmt(S.project.tsubo)}万円/坪`],["広告費率・反響単価",`${s.adRate}%・${s.cpa}万円/件`],
+    ["来場率",`${s.visitRate}%`],["成約率（期開始月）",`${s.closeRate}%（${s.launchClose??s.closeRate}%）`],["見込客残存率",`${s.retain}%（事前 ${s.preRetain}%）`]];
+  sl.addTable(ar.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:v,options:{align:"right"}}]),
+    {x:RX,y:ay+0.27,w:RW,colW:[1.75,RW-1.75],fontFace:F,fontSize:8,color:C.ink,rowH:0.21,border:{type:"solid",color:C.line,pt:0.5},margin:0.03});
+
+  /* ===== 2枚目：月次計画表（1枚に収める） ===== */
+  sl=pptx.addSlide();
+  head(sl,`${safeName()}　月次計画表`,`${i2lbl(R.rows[0].i)}〜${i2lbl(R.rows.at(-1).i)}（${R.rows.length}ヶ月）`);
+  const cols=["年月","状況","広告費(万円)","反響","来場","契約","累計契約","累計率","在庫","目標累計","目標差","累計契約額(億円)"];
+  const toRow=r=>{ const g=r.sold-Math.round(r.tgtCum);
+    return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),fmt(r.inq),fmt(r.vis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
+      r.i<R.saleI?"—":{text:(g>0?"+":"")+g,options:{color:g<0?C.bad:g>0?C.good:C.ink}},fmt(r.cum/10000,2)]; };
+  const n=R.rows.length, twoCol=n>30;
+  const avail=7.15-1.15;
+  if(!twoCol){
+    const rh=Math.min(0.3,avail/(n+2)), fs=rh>=0.26?9:rh>=0.2?8:7;
+    const hdr=cols.map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
+    const tot=["合計","",fmt(R.adTotal),fmt(R.inqTotal),fmt(R.visTotal),{text:String(R.cTotal),options:{bold:true}},"","","","","",fmt(R.revTotal/10000,2)].map(v=>typeof v==="string"?{text:v,options:{bold:true,fill:{color:C.bg2}}}:{...v,options:{...v.options,fill:{color:C.bg2}}});
+    sl.addTable([hdr,...R.rows.map(toRow),tot],{x:0.4,y:1.15,w:12.53,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
+  } else {
+    // 31ヶ月以上は左右2段組（列を絞る）
+    const pick=[0,2,5,6,7,8,10];
+    const hdr=pick.map(k=>({text:cols[k],options:{color:C.mut,fill:{color:C.bg2}}}));
+    const half=Math.ceil(n/2), rh=Math.min(0.24,avail/(half+1)), fs=rh>=0.2?8:rh>=0.15?7:6;
+    [R.rows.slice(0,half),R.rows.slice(half)].forEach((chunk,k)=>{
+      sl.addTable([hdr,...chunk.map(r=>{ const row=toRow(r); return pick.map(i=>row[i]); })],{x:0.4+k*6.33,y:1.15,w:6.2,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02}); });
   }
+  sl.addText("詳細な前提条件と全項目はExcel出力を参照",{x:0.4,y:7.2,w:8,h:0.2,fontFace:F,fontSize:8,color:C.mut,margin:0});
   return pptx.write({outputType:"arraybuffer"});
 }
 
