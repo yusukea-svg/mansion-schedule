@@ -120,6 +120,9 @@ tr.tgt td{border-bottom:2px solid var(--target)}
 .vis{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-bottom:12px}
 .vis .check{font-size:.78rem}
 .derived{padding-top:2px}
+.ms{position:absolute;font-size:.68rem;color:var(--fg);white-space:nowrap;line-height:1.2;padding-left:4px;border-left:1px solid var(--muted)}
+.ms i{display:none}
+.ms{background:linear-gradient(to bottom,transparent calc(100% - 15px),var(--bg) 0);padding-right:4px}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -420,6 +423,13 @@ function schedWarn(){
 }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* 販売の節目（全体工程に表示） */
+function salesMilestones(R){
+  const ms=[];
+  if(R.colI>R.adI){ ms.push({i:R.adI,l:"広告開始"},{i:R.colI,l:"集客開始"}); } else ms.push({i:R.adI,l:"広告・集客開始"});
+  ms.push({i:R.saleI,l:"販売開始"});
+  return ms;
+}
 /* ===== 結果表示 ===== */
 function render(){
   document.getElementById("ttl").textContent = (S.project.name? S.project.name+" ":"")+"販売計画";
@@ -517,7 +527,7 @@ function renderGantt(R){
   ];
   const sales={name:"販売", ready:true, key:"sales"};
   if(R){ sales.si=Math.min(R.adI,R.saleI); sales.ei=R.selloutI??R.rows.at(-1).i; sales.ti=R.tgtI; }
-  if(R) sales.ci=R.colI>R.adI?R.colI:null;
+  if(R) sales.ms=salesMilestones(R);
   const under = R&&R.U? [{name:"アンダー販売", ready:true, key:"sales", si:R.U.si, ei:R.U.ei, color:"var(--under)"}] : [];
   if(R) sales.si=R.adI;
   const list=[items[0],items[1],items[2],...under,sales,items[3]].map(it=>it.ready?it:{...it,si:validYm(it.s)?ym2i(it.s):null,ei:validYm(it.e)?ym2i(it.e):null});
@@ -530,10 +540,12 @@ function renderGantt(R){
   const html=list.map(it=>{
     if(it.si==null||it.ei==null) return `<div class="gantt-row"><span>${it.name}</span><span class="hint">日付未入力</span></div>`;
     const left=pct(it.si), w=Math.max(1.2,pct(it.ei+1)-left);
-    const tgt = it.ti!=null? `<span title="完売目標" style="position:absolute;left:${pct(it.ti+1)}%;top:-3px;bottom:-3px;border-left:2px solid var(--target)"></span>`:"";
-    return `<div class="gantt-row"><button type="button" class="glink" data-tab="${it.key}">${it.name}</button>
-      <div style="position:relative;height:16px;background:var(--surface-2)">
-        <span title="${i2lbl(it.si)}〜${i2lbl(it.ei)}" style="position:absolute;left:${left}%;width:${w}%;top:3px;bottom:3px;border-radius:1px;background:${it.color||(it.ready?"var(--accent)":"var(--bar-pre)")}"></span>${tgt}${it.ci!=null?`<span title="集客開始 ${i2lbl(it.ci)}" style="position:absolute;left:${pct(it.ci)}%;top:5px;width:2px;bottom:5px;background:var(--surface)"></span>`:""}</div></div>`;
+    const tgt = it.ti!=null? `<span title="完売目標" style="position:absolute;left:${pct(it.ti+1)}%;top:-3px;height:22px;border-left:2px solid var(--target)"></span>`:"";
+    const ms = it.ms? it.ms.map((m,k)=>`<span style="position:absolute;left:${pct(m.i)}%;top:3px;height:10px;width:2px;margin-left:-1px;background:var(--surface)"></span>
+        <span class="ms" style="left:${pct(m.i)}%;top:16px;padding-top:${4+(k%3)*13}px;z-index:${5-k}"><i></i>${m.l} ${i2short(m.i)}</span>`).join("") : "";
+    return `<div class="gantt-row"${it.ms?' style="align-items:start"':""}><button type="button" class="glink" data-tab="${it.key}">${it.name}</button>
+      <div style="position:relative;height:${it.ms?66:16}px"><div style="position:absolute;inset:0 0 auto 0;height:16px;background:var(--surface-2)"></div>
+        <span title="${i2lbl(it.si)}〜${i2lbl(it.ei)}" style="position:absolute;left:${left}%;width:${w}%;top:3px;height:10px;border-radius:1px;background:${it.color||(it.ready?"var(--accent)":"var(--bar-pre)")}"></span>${tgt}${ms}</div></div>`;
   }).join("");
   document.getElementById("gantt").innerHTML=`<div class="gantt-row"><span></span><div style="position:relative;height:14px">${ticks}</div></div>`+html;
 }
@@ -648,19 +660,25 @@ async function buildPptx(){
       : {n,si:R.adI,ei:so??R.rows.at(-1).i,ready:true,sales:true});
   const all=items.flatMap(i=>[i.si,i.ei]).concat([R.tgtI]).filter(v=>v!=null);
   const a=Math.min(...all), b=Math.max(...all)+1;
-  const gx=2.4, gw=10.4, gy=1.9, rh=0.75, X=i=>gx+(i-a)/(b-a)*gw;
-  for(let i=a;i<=b;i++){ if(i%12===0||i===a){ sl.addShape(pptx.ShapeType.line,{x:X(i),y:gy-0.1,w:0,h:rh*items.length+0.1,line:{color:C.line,width:0.75}});
+  const gx=2.4, gw=10.4, gy=1.9, X=i=>gx+(i-a)/(b-a)*gw;
+  const rhOf=it=>it.sales?1.3:0.62; const ys=[]; let yy=gy; items.forEach(it=>{ ys.push(yy); yy+=rhOf(it); });
+  for(let i=a;i<=b;i++){ if(i%12===0||i===a){ sl.addShape(pptx.ShapeType.line,{x:X(i),y:gy-0.1,w:0,h:yy-gy+0.1,line:{color:C.line,width:0.75}});
       sl.addText(i%12===0?`${i/12}年`:i2short(i),{x:X(i)+0.03,y:gy-0.45,w:1,h:0.3,fontFace:F,fontSize:10,color:C.mut}); } }
-  items.forEach((it,k)=>{ const y=gy+k*rh;
+  items.forEach((it,k)=>{ const y=ys[k];
     sl.addText(it.n,{x:0.5,y:y+0.12,w:1.8,h:0.4,fontFace:F,fontSize:13,color:C.ink,bold:it.ready});
     sl.addShape(pptx.ShapeType.rect,{x:gx,y:y+0.15,w:gw,h:0.38,fill:{color:C.bg2}});
-    if(it.si!=null&&it.ei!=null){ sl.addShape(pptx.ShapeType.rect,{x:X(it.si),y:y+0.18,w:Math.max(0.08,X(it.ei+1)-X(it.si)),h:0.32,fill:{color:it.col||(it.ready?C.acc:C.pre)}});
-      sl.addText(`${i2short(it.si)}〜${i2short(it.ei)}`,{x:Math.min(X(it.si),gx+gw-1.6),y:y+0.5,w:1.6,h:0.25,fontFace:F,fontSize:9,color:C.mut}); } });
-  const sk=items.findIndex(it=>it.sales), ty=gy+sk*rh;
-  if(R.colI>R.adI){ sl.addShape(pptx.ShapeType.line,{x:X(R.colI),y:ty+0.18,w:0,h:0.32,line:{color:"FFFFFF",width:2}});
-    sl.addText(`集客開始 ${i2short(R.colI)}`,{x:X(R.colI)+0.05,y:ty-0.2,w:1.8,h:0.28,fontFace:F,fontSize:9,color:C.acc}); } sl.addShape(pptx.ShapeType.line,{x:X(R.tgtI+1),y:ty+0.08,w:0,h:0.5,line:{color:C.tgt,width:2}});
-  sl.addText(`完売目標 ${i2lbl(R.tgtI)}`,{x:X(R.tgtI+1)+0.05,y:ty-0.2,w:2.5,h:0.28,fontFace:F,fontSize:9,color:C.tgt});
-  sl.addText("販売以外の工程は日付のみ（詳細試算は今後追加）",{x:0.5,y:6.5,w:12,h:0.3,fontFace:F,fontSize:10,color:C.mut});
+    if(it.si==null||it.ei==null) return;
+    sl.addShape(pptx.ShapeType.rect,{x:X(it.si),y:y+0.18,w:Math.max(0.08,X(it.ei+1)-X(it.si)),h:0.32,fill:{color:it.col||(it.ready?C.acc:C.pre)}});
+    if(!it.sales){ sl.addText(`${i2short(it.si)}〜${i2short(it.ei)}`,{x:Math.min(X(it.si),gx+gw-1.6),y:y+0.5,w:1.6,h:0.25,fontFace:F,fontSize:9,color:C.mut}); return; }
+    const MS=salesMilestones(R), lyOf=j=>y+0.55+(j%3)*0.22;
+    MS.forEach((m,j)=>{ const ly=lyOf(j);
+      if(m.i>it.si) sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.18,w:0,h:0.32,line:{color:"FFFFFF",width:1.5}});
+      sl.addShape(pptx.ShapeType.line,{x:X(m.i),y:y+0.5,w:0,h:ly-y-0.5+0.2,line:{color:C.mut,width:0.75}}); });
+    MS.forEach((m,j)=>{ const t=`${m.l} ${i2short(m.i)}`; sl.addText(t,{x:X(m.i)+0.03,y:lyOf(j),w:0.12+t.length*0.095,h:0.22,fontFace:F,fontSize:9,color:C.ink,margin:0,fill:{color:"FFFFFF"}}); });
+    sl.addText(`〜 完売予定 ${i2short(it.ei)}`,{x:Math.min(X(it.ei+1)+0.05,gx+gw-1.8),y:y+0.2,w:1.8,h:0.28,fontFace:F,fontSize:9,color:C.mut});
+    sl.addShape(pptx.ShapeType.line,{x:X(R.tgtI+1),y:y+0.08,w:0,h:0.5,line:{color:C.tgt,width:2}});
+    sl.addText(`完売目標 ${i2lbl(R.tgtI)}`,{x:X(R.tgtI+1)+0.05,y:y-0.2,w:2.5,h:0.28,fontFace:F,fontSize:9,color:C.tgt}); });
+  sl.addText("販売以外の工程は日付のみ（詳細試算は今後追加）",{x:0.5,y:6.6,w:12,h:0.3,fontFace:F,fontSize:10,color:C.mut});
 
   // 3 販売計画サマリー
   sl=pptx.addSlide(); title(sl,"販売計画サマリー",`完売予定 ${so==null?"—":i2lbl(so)}（${verdict}）`);
