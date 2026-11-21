@@ -136,6 +136,21 @@ tr.act td{background:var(--surface-2)}
 .cumtbl th:first-child,.cumtbl td:first-child{position:sticky;left:0;background:var(--bg);z-index:1}
 .field.off input{background:var(--surface-2);color:var(--muted);cursor:not-allowed;border-style:dashed}
 .field.off label{color:var(--muted)}
+tfoot th{position:sticky;bottom:0;background:var(--bg);z-index:2}
+.subtabs{display:flex;margin:0 0 14px;border:1px solid var(--line);width:max-content;max-width:100%}
+.subtabs button{border:0;border-radius:0;padding:5px 14px;background:var(--surface);color:var(--muted)}
+.subtabs button+button{border-left:1px solid var(--line)}
+.subtabs button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.mtabs{margin:0 0 8px}
+.cumtbl tr.cum td{background:var(--surface-2)}
+.cumtbl tr.cum td:first-child{background:var(--surface-2)}
+svg text.val{fill:var(--fg);font-size:10px}
+.fxitem{display:grid;gap:6px;padding:10px 0;border-bottom:1px solid var(--line)}
+.fxrow{display:flex;gap:6px;align-items:center}
+.fxrow .unit{width:96px;flex:none}
+.fxrow input[type=month]{width:auto;flex:1}
+.fxsum{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:10px}
+.linkbtn{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;font-size:.78rem}
 .foot{color:var(--muted);font-size:.72rem;max-width:72em}
 </style>
 
@@ -198,14 +213,14 @@ tr.act td{background:var(--surface-2)}
         <div class="sechead">
           <h2 id="h-chart">契約推移</h2>
           <div class="legend">
-            <span><i style="background:var(--bar)"></i>月間契約数</span>
+            <span><i style="background:var(--bar)"></i>月間契約数（棒の上の数字）</span>
             <span id="lgUnder"><i style="background:var(--under)"></i>アンダー販売</span>
             <span><i style="background:var(--accent);height:3px"></i>累計契約率</span>
             <span><i style="background:var(--target);height:3px"></i>目標ペース（累計）</span>
           </div>
         </div>
         <div class="scroll"><svg id="chart" viewBox="0 0 900 300" role="img" aria-label="月間契約数と累計契約率のグラフ" style="width:100%;min-width:560px;height:auto;display:block"></svg></div>
-        <h3 class="subh">反響・来場・契約の累計（その月までの合計）</h3>
+        <h3 class="subh">反響・来場・契約（月ごとの数と、その月までの累計）</h3>
         <div class="scroll"><table id="cumTbl" class="cumtbl"></table></div>
       </section>
 
@@ -215,11 +230,13 @@ tr.act td{background:var(--surface-2)}
       </section>
 
       <section class="panel" aria-labelledby="h-month">
-        <div class="sechead"><h2 id="h-month">月次計画表</h2><span class="hint">広告費の欄は直接書き換えられます（色付きの欄が手入力）。<button type="button" id="btnClearOv">手入力をすべて戻す</button></span></div>
+        <div class="sechead"><h2 id="h-month">月次計画表</h2><span class="hint">流動費（広告）の欄は直接書き換えられます（色付きの欄が手入力）。<button type="button" id="btnClearOv">このシナリオの手入力を戻す</button></span></div>
+        <div class="tabs mtabs" role="tablist" id="mTabs" aria-label="シナリオ"></div>
+        <p class="hint" id="mNote" style="margin:0 0 8px"></p>
         <div class="scroll tall"><table id="monthTbl"></table></div>
       </section>
 
-      <p class="foot">計算の考え方：来場は集客開始から毎月「月間来場数」。第1期の販売開始月に「第1期の戸数 × 第1期販売率」が契約し、その後は毎月「月間来場数 × 契約率（歩留）」が契約になります（供給済み在庫が上限、端数は翌月に繰り越し）。反響数は 来場数 ÷ 反響来場率 で逆算した参考値です。広告費は広告予算の基準（率または1戸あたり金額）から月別に配分し、契約数には連動しません。アンダー販売は期間内に均等に契約する前提で、広告予算や1戸あたり広告費には含めません。</p>
+      <p class="foot">計算の考え方：来場は集客開始から毎月「月間来場数」。第1期の販売開始月に「第1期の戸数 × 第1期販売率」が契約し、その後は毎月「月間来場数 × 契約率（歩留）」が契約になります（供給済み在庫が上限、端数は翌月に繰り越し）。反響数は 来場数 ÷ 反響来場率 で逆算した参考値です。販促費は基準（率または1戸あたり金額）で計画値を決め、流動費（広告）と固定費に分けます。流動費は計画値を上限に固定し、広告開始〜完売の各月に按分します（手入力した月はその額、残りを他の月で按分）。固定費は内訳ごとに選んだ時期に計上します。販促費は契約数には連動しません。アンダー販売は期間内に均等に契約する前提で、販促費の対象外です。</p>
     </div>
   </div>
 </div>
@@ -241,29 +258,37 @@ const SAMPLE = {
     handover:{start:"2029-03", end:"2029-03"}
   },
   under:{on:true, start:"2027-01", end:"2027-03", units:10, adj:0},
-  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adMode:"rate", adRate:2.0, adPerUnit:120, extendRate:100},
+  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adMode:"rate", adRate:3.0, adPerUnit:200, varRate:50, extendRate:100},
   phases:[
     {name:"第1期", start:"2027-06", units:40, adj:0},
     {name:"第2期", start:"2027-11", units:40, adj:0},
     {name:"第3期", start:"2028-04", units:30, adj:0}
   ],
   scenarios:[
-    {name:"悲観", firstRate:50, visits:35, visitRate:25, yieldRate:12},
-    {name:"標準", firstRate:65, visits:45, visitRate:30, yieldRate:15},
-    {name:"楽観", firstRate:80, visits:55, visitRate:35, yieldRate:17}
+    {name:"悲観", firstRate:50, visits:35, visitRate:25, yieldRate:12, adOverride:{}},
+    {name:"標準", firstRate:65, visits:45, visitRate:30, yieldRate:15, adOverride:{}},
+    {name:"楽観", firstRate:80, visits:55, visitRate:35, yieldRate:17, adOverride:{}}
   ],
   activeScenario:1,
-  adOverride:{}
+  // 固定費の内訳（固定費に対する割合）。timing は計上の時期
+  fixedItems:[
+    {name:"モデルルーム建設・設営", share:35, timing:"precol", start:"", end:""},
+    {name:"モデルルーム運営・人件費", share:25, timing:"colToEnd", start:"", end:""},
+    {name:"パンフレット・CG・模型", share:15, timing:"ad", start:"", end:""},
+    {name:"ホームページ・映像制作", share:10, timing:"ad", start:"", end:""},
+    {name:"その他（備品・諸経費）", share:15, timing:"adToEnd", start:"", end:""}
+  ]
 };
+const FX_TIMING={ad:"広告開始月に一括",precol:"集客開始の前月に一括",launch:"各期の販売開始月に分けて",adToEnd:"広告開始〜完売まで毎月均等",colToEnd:"集客開始〜完売まで毎月均等",custom:"期間を指定して毎月均等"};
 const KEY="mansion-sales-sim-v1";
 const SC_FIELDS=["firstRate","visits","visitRate","yieldRate"];
 function pickSc(o){ const r={}; SC_FIELDS.forEach(k=>{ if(o&&o[k]!=null) r[k]=+o[k]; }); return r; }
 function syncScenario(){ if(!S.scenarios?.length) return; S.activeScenario=Math.min(Math.max(0,S.activeScenario|0),S.scenarios.length-1); Object.assign(S.sales,pickSc(S.scenarios[S.activeScenario])); }
-function simScenario(k){ const st=structuredClone(S); Object.assign(st.sales,pickSc(S.scenarios[k])); return simulateSales(st); }
+function simScenario(k){ S.project.avgPrice=unitPrice(S.project); const c=S.scenarios[k]; if(!c) return null; const st=structuredClone(S); Object.assign(st.sales,pickSc(c)); st.ov=c.adOverride||{}; return simulateSales(st); }
 const TSUBO=3.30578; // 1坪 = 3.30578㎡
 const unitPrice = pj => (+pj.area||0)/TSUBO*(+pj.tsubo||0); // 平均価格（万円）= 平均専有面積(坪) × 坪単価
 let S = load();
-let activeTab = "sales";
+let activeTab = "sales", salesSub = "cond", monthTab = S.activeScenario;
 
 const MODULES = [
   {key:"land", name:"用地取得", ready:false, plan:["取得価格・諸費用","決済スケジュール","事業収支の起点"]},
@@ -282,8 +307,20 @@ const fmt = (n,d=0) => Number(n).toLocaleString("ja-JP",{maximumFractionDigits:d
 const oku = man => man>=10000 ? `${fmt(man/10000,2)}億円` : `${fmt(man)}万円`;
 const validYm = s => /^\d{4}-\d{2}$/.test(s||"");
 
+function normalize(o){
+  if(!(o&&o.sales&&o.phases)) return null;
+  o.project={...SAMPLE.project,...(o.project||{})};
+  o.sales={...SAMPLE.sales,...o.sales}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; o.schedule={...structuredClone(SAMPLE.schedule),...(o.schedule||{})};
+  if(!Array.isArray(o.scenarios)||!o.scenarios.length||o.scenarios.some(c=>c.firstRate==null)){ o.scenarios=structuredClone(SAMPLE.scenarios); o.activeScenario=1; }
+  o.scenarios.forEach(c=>{ if(!c.adOverride||typeof c.adOverride!=="object") c.adOverride={}; });
+  delete o.adOverride; // 旧形式（広告費の手入力）は販促費への組み替えに伴い破棄
+  if(!Array.isArray(o.fixedItems)) o.fixedItems=structuredClone(SAMPLE.fixedItems);
+  if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); }
+  o.activeScenario=Math.min(Math.max(0,o.activeScenario|0),o.scenarios.length-1);
+  return o;
+}
 function load(){
-  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=JSON.parse(raw); if(o&&o.sales&&o.phases){ o.sales={...SAMPLE.sales,...o.sales}; o.adOverride=o.adOverride||{}; o.under={...SAMPLE.under,on:false,...(o.under||{})}; o.visible={...SAMPLE.visible,...(o.visible||{})}; o.schedule={...structuredClone(SAMPLE.schedule),...(o.schedule||{})}; if(!Array.isArray(o.scenarios)||!o.scenarios.length||o.scenarios.some(c=>c.firstRate==null)){ o.scenarios=structuredClone(SAMPLE.scenarios); o.activeScenario=1; } if(!o.project.area){ o.project.area=70; o.project.tsubo=Math.round((o.project.avgPrice||6800)/(70/TSUBO)); } return o; } } }catch(e){}
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const o=normalize(JSON.parse(raw)); if(o) return o; } }catch(e){}
   return structuredClone(SAMPLE);
 }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
@@ -304,20 +341,20 @@ function simulateSales(st){
   const totalRev=phaseRev+(U?U.units*U.price:0);
   const adI=ym2i(s.adStart), saleI=P[0].si, tgtI=Math.max(ym2i(s.target), saleI);
   const colI=validYm(s.collectStart)? Math.max(adI,ym2i(s.collectStart)) : adI;
-  const startI=Math.min(adI,saleI,U?U.si:Infinity), limit=startI+84;
-  // 広告予算の配分（広告開始〜完売目標）。アンダー販売分は広告予算の対象外
-  const budget= s.adMode==="perUnit" ? phaseSupply*(+s.adPerUnit||0) : phaseRev*s.adRate/100;
+  // 販促費（計画値）＝流動費（広告）＋固定費。アンダー販売分は対象外
+  const budget= s.adMode==="perUnit" ? phaseSupply*(+s.adPerUnit||0) : phaseRev*(+s.adRate||0)/100;
+  const varRate=Math.min(100,Math.max(0,+s.varRate||0));
+  const varBudget=budget*varRate/100, fixBudget=budget-varBudget;
+  const items=(st.fixedItems||[]).map(f=>({...f,amt:fixBudget*(+f.share||0)/100}));
+  const fxStart=f=> f.timing==="precol"? colI-1 : f.timing==="colToEnd"? colI : f.timing==="launch"? saleI : f.timing==="custom"&&validYm(f.start)? ym2i(f.start) : adI;
+  const baseI=Math.min(adI,saleI,U?U.si:Infinity), limit=baseI+84;
+  const startI=Math.min(baseI,...items.filter(f=>f.amt>0).map(fxStart).filter(v=>v>=baseI-24));
   const launchSet=new Set(P.map(p=>p.si));
-  const weight=i=> i<adI||i>tgtI ? 0 : (i<saleI?1.6 : launchSet.has(i)?1.4 : i>tgtI-3?0.8 : 1);
-  let sumW=0; for(let i=startI;i<=tgtI;i++) sumW+=weight(i);
-  const avgAd = sumW? budget/sumW : 0;
+  const ov=st.ov||{};
   const rows=[]; let frac=0, sold=0, cum=0, selloutI=null, cumInq=0, cumVis=0;
   const P1=P[0];
   for(let i=startI;i<=limit;i++){
     const ym=i2ym(i);
-    let ad = i<adI ? 0 : i>tgtI ? avgAd*s.extendRate/100 : avgAd*weight(i);
-    const ov = st.adOverride[ym]; const isOv = i>=adI && ov!==undefined && ov!=="" && !isNaN(+ov);
-    if(isOv) ad=+ov;
     // 来場は集客開始から毎月「月間来場数」。反響は 来場 ÷ 反響来場率 で逆算
     const vis = i>=colI ? (+s.visits||0) : 0;
     const inq = (+s.visitRate>0) ? vis/(s.visitRate/100) : 0;
@@ -342,12 +379,27 @@ function simulateSales(st){
     const stage = i<saleI ? (uc>0||(U&&i>=U.si&&i<=U.ei)? "アンダー販売" : i<adI? "準備" : i<colI? "広告開始" : "事前案内")
       : (avail>0? "販売中" : (sold>=supply?"完売":"次期待ち"));
     cumInq+=inq; cumVis+=vis;
-    rows.push({i,ym,ad,isOv,inq,vis,cumInq,cumVis,c,uc,sold,rate:sold/supply,stock:supply-sold,tgtCum,rev,cum,stage,launch:launchSet.has(i),pre:i<saleI,noAd:i<adI});
+    rows.push({i,ym,ad:0,fx:0,promo:0,isOv:false,inq,vis,cumInq,cumVis,c,uc,sold,rate:sold/supply,stock:supply-sold,tgtCum,rev,cum,stage,launch:launchSet.has(i),pre:i<saleI,noAd:i<adI});
     if(sold>=supply){ selloutI=i; break; }
   }
+  const endI=rows.at(-1).i;
+  // 流動費（広告）：計画値を上限に固定し、広告開始〜完売の各月へ按分。手入力の月はその額、残りを他の月で按分
+  const weight=i=> i<adI||i>endI ? 0 : i<saleI?1.6 : launchSet.has(i)?1.4 : i>tgtI?(+s.extendRate||0)/100 : i>tgtI-3?0.8 : 1;
+  let ovSum=0, wSum=0;
+  rows.forEach(r=>{ const v=ov[r.ym]; r.isOv= r.i>=adI && v!==undefined && v!==null && v!=="" && !isNaN(+v); if(r.isOv) ovSum+=+v; else wSum+=weight(r.i); });
+  const restVar=Math.max(0,varBudget-ovSum);
+  rows.forEach(r=>{ r.ad= r.isOv? +ov[r.ym] : wSum? restVar*weight(r.i)/wSum : 0; });
+  // 固定費：内訳ごとに選んだ時期へ計上（完売より後の分は完売月までに寄せる）
+  const fxMap={}, add=(i,v)=>{ fxMap[i]=(fxMap[i]||0)+v; };
+  items.forEach(f=>{ if(!(f.amt>0)) return;
+    if(f.timing==="launch"){ P.forEach(p=>add(Math.min(p.si,endI),f.amt/P.length)); f.si=P[0].si; f.ei=Math.min(P.at(-1).si,endI); return; }
+    const e0= f.timing==="ad"? adI : f.timing==="precol"? colI-1 : f.timing==="custom"? (validYm(f.end)?ym2i(f.end):fxStart(f)) : endI;
+    const a=Math.min(Math.max(fxStart(f),startI),endI), b=Math.min(Math.max(e0,a),endI);
+    for(let i=a;i<=b;i++) add(i,f.amt/(b-a+1)); f.si=a; f.ei=b; });
+  rows.forEach(r=>{ r.fx=fxMap[r.i]||0; r.promo=r.ad+r.fx; });
   const tot=k=>rows.reduce((a,r)=>a+r[k],0);
-  return {rows,P,U,supply,phaseSupply,totalRev,budget,adI,colI,saleI,tgtI,selloutI,
-    adTotal:tot("ad"),inqTotal:tot("inq"),visTotal:tot("vis"),cTotal:tot("c"),ucTotal:tot("uc"),revTotal:tot("rev")};
+  return {rows,P,U,supply,phaseSupply,totalRev,budget,varBudget,fixBudget,items,ovSum,varOver:ovSum-varBudget,varShort:(wSum?0:varBudget-ovSum),adI,colI,saleI,tgtI,selloutI,
+    fxTotal:tot("fx"),promoTotal:tot("promo"),adTotal:tot("ad"),inqTotal:tot("inq"),visTotal:tot("vis"),cTotal:tot("c"),ucTotal:tot("uc"),revTotal:tot("rev")};
 }
 
 /* ===== 入力パネル ===== */
@@ -373,10 +425,11 @@ function renderTabs(){
 function renderInputs(){
   const el=document.getElementById("inputs");
   const m=MODULES.find(x=>x.key===activeTab);
+  if(m.key==="sales"&&salesSub==="fixed"){ el.innerHTML=subTabs()+fixedPanel(); return; }
   if(m.key==="sales"){
     const sumU=S.phases.reduce((a,p)=>a+(+p.units||0),0)+(S.under.on?(+S.under.units||0):0);
     const diff=sumU-S.project.units;
-    el.innerHTML=`
+    el.innerHTML=subTabs()+`
     <div class="ki">
       <fieldset><legend>物件</legend>
         <div class="fields">
@@ -393,7 +446,7 @@ function renderInputs(){
           ${ymField("アンダー販売 開始","under.start")}
           ${ymField("アンダー販売 終了","under.end")}
           ${numField("アンダー販売 戸数","under.units","戸",{step:1})}
-          <div class="hint full">広告開始より前に、関係者や地権者などへ先行して販売する分です。期間内に均等に契約する前提で、広告予算の対象外です。</div>
+          <div class="hint full">広告開始より前に、関係者や地権者などへ先行して販売する分です。期間内に均等に契約する前提で、販促費の対象外です。</div>
         </div>`:""}
         <div class="fields">
           ${ymField("広告開始","sales.adStart")}
@@ -416,14 +469,17 @@ function renderInputs(){
         <span class="hint">合計 <b class="num">${sumU}</b> 戸${S.under.on?"（アンダー販売を含む）":""}</span>
         ${diff?`<span class="warn">総戸数と ${diff>0?"+":""}${diff} 戸ずれています（試算は期の合計で行います）</span>`:""}</div>
       </fieldset>
-      <fieldset><legend>広告</legend>
+      <fieldset><legend>販促費</legend>
         <div class="fields">
-          <div class="field full"><span class="hint">広告予算の基準</span>
+          <div class="field full"><span class="hint">販促費の基準</span>
             <div class="radios"><label class="check"><input type="radio" name="admode" data-path="sales.adMode" value="rate" ${S.sales.adMode!=="perUnit"?"checked":""}> 販売額に対する率</label>
             <label class="check"><input type="radio" name="admode" data-path="sales.adMode" value="perUnit" ${S.sales.adMode==="perUnit"?"checked":""}> 1戸あたり金額</label></div></div>
           ${adField("rate")}
           ${adField("perUnit")}
-          ${numField("目標超過後の広告","sales.extendRate","%",{step:5,hint:"平均月額に対する割合"})}
+          ${numField("流動費の割合","sales.varRate","%",{step:5,hint:"販促費に対する割合。残りが固定費"})}
+          ${numField("目標超過後の流動費","sales.extendRate","%",{step:5,hint:"完売目標を過ぎた月の配分（通常月＝100）"})}
+          ${(()=>{ const pp=promoPlan(); return `<div class="field full derived"><span class="hint">販促費の計画値</span><span class="num"><b>${oku(pp.budget)}</b>　<span class="hint">流動費（広告） ${oku(pp.varB)} ／ 固定費 ${oku(pp.fixB)}</span></span>
+            <span class="hint">流動費は計画値を上限に固定し、月ごとに按分します。<button type="button" class="linkbtn" data-sub="fixed">固定費の内訳を入力する</button></span></div>`; })()}
         </div>
       </fieldset>
       <fieldset><legend>シナリオ</legend>
@@ -449,15 +505,39 @@ function renderInputs(){
   }
 }
 const SC_LABEL={firstRate:"第1期販売率",visits:"月間来場数",visitRate:"反響来場率",yieldRate:"契約率"};
+function subTabs(){
+  return `<div class="subtabs" role="group" aria-label="販売の入力">${[["cond","販売条件"],["fixed","固定費の内訳"]].map(([k,l])=>`<button type="button" data-sub="${k}" aria-pressed="${salesSub===k}">${l}</button>`).join("")}</div>`;
+}
+function promoPlan(){
+  const units=S.phases.reduce((a,p)=>a+(+p.units||0),0), rev=units*unitPrice(S.project);
+  const budget= S.sales.adMode==="perUnit"? units*(+S.sales.adPerUnit||0) : rev*(+S.sales.adRate||0)/100;
+  const varB=budget*Math.min(100,Math.max(0,+S.sales.varRate||0))/100;
+  return {budget,varB,fixB:budget-varB};
+}
+function fixedPanel(){
+  const pp=promoPlan(), sum=S.fixedItems.reduce((a,f)=>a+(+f.share||0),0);
+  return `<div class="ki"><fieldset><legend>固定費の内訳</legend>
+    <div class="hint">固定費 <b class="num">${oku(pp.fixB)}</b>（販促費 ${oku(pp.budget)} − 流動費 ${oku(pp.varB)}）を、項目ごとの割合で分けます。計上の時期は月次計画表の「固定費」に反映します。</div>
+    <div>${S.fixedItems.map((f,k)=>`<div class="fxitem">
+      <div class="fxrow"><input type="text" data-fx="${k}" data-k="name" value="${esc(f.name)}" aria-label="項目名"><button type="button" data-fxdel="${k}" aria-label="${esc(f.name)}を削除">×</button></div>
+      <div class="fxrow"><div class="unit"><input type="number" min="0" max="100" step="any" data-fx="${k}" data-k="share" value="${f.share}" aria-label="${esc(f.name)}の割合"><span>%</span></div><span class="num">＝ ${fmt(pp.fixB*(+f.share||0)/100)} 万円</span></div>
+      <select data-fx="${k}" data-k="timing" aria-label="${esc(f.name)}の計上時期">${Object.entries(FX_TIMING).map(([v,l])=>`<option value="${v}" ${f.timing===v?"selected":""}>${l}</option>`).join("")}</select>
+      ${f.timing==="custom"?`<div class="fxrow"><input type="month" data-fx="${k}" data-k="start" value="${f.start||""}" aria-label="${esc(f.name)}の計上開始"><span class="hint">〜</span><input type="month" data-fx="${k}" data-k="end" value="${f.end||""}" aria-label="${esc(f.name)}の計上終了"></div>`:""}
+    </div>`).join("")}</div>
+    <div class="fxsum"><button type="button" id="addFx">項目を追加</button><span class="hint">割合の合計 <b class="num">${fmt(sum,1)}</b>%</span>
+      ${Math.abs(sum-100)>0.01?`<span class="warn">合計が100%になるように入力してください（${sum<100?`残り${fmt(100-sum,1)}%は計上されません`:`${fmt(sum-100,1)}%超過しています`}）</span>`:""}</div>
+    <div class="hint">「〜完売まで」は各シナリオの完売月までです。完売より後に予定した分は完売月までに寄せて計上します。</div>
+  </fieldset></div>`;
+}
 function adField(mode){
   const on=(S.sales.adMode==="perUnit")===(mode==="perUnit");
   const units=S.phases.reduce((a,p)=>a+(+p.units||0),0), rev=units*unitPrice(S.project);
   const path=mode==="rate"?"sales.adRate":"sales.adPerUnit";
   const v= on ? get(path) : (mode==="rate" ? (rev? +(S.sales.adPerUnit*units/rev*100).toFixed(2):0) : (units? Math.round(rev*S.sales.adRate/100/units):0));
-  const lbl=mode==="rate"?"広告費率":"1戸あたり広告費", unit=mode==="rate"?"%":"万円/戸";
+  const lbl=mode==="rate"?"販促費率":"1戸あたり販促費", unit=mode==="rate"?"%":"万円/戸";
   return `<div class="field${on?"":" off"}"><label for="f-${path}">${lbl}</label>
     <div class="unit"><input id="f-${path}" ${on?`data-path="${path}"`:"disabled"} type="number" step="${mode==="rate"?0.1:5}" min="0" value="${v}"><span>${unit}</span></div>
-    <div class="hint">${on?"この値で広告予算を決めます":"もう一方から自動計算（編集不可）"}</div></div>`;
+    <div class="hint">${on?"この値で販促費を決めます":"もう一方から自動計算（編集不可）"}</div></div>`;
 }
 function adHint(mode){
   const s=S.sales, units=S.phases.reduce((a,p)=>a+(+p.units||0),0), rev=units*unitPrice(S.project);
@@ -492,11 +572,11 @@ function salesMilestones(R){
 function render(){
   document.getElementById("ttl").textContent = (S.project.name? S.project.name+" ":"")+"販売計画";
   syncScenario();
-  const R=simulateSales(S);
+  const R=simScenario(S.activeScenario);
   renderGantt(R);
   if(!R){ document.getElementById("kpis").innerHTML='<p class="warn">広告開始・完売目標・期の販売開始を入力してください。</p>'; return; }
   document.getElementById("lgUnder").hidden=!R.U;
-  renderKpis(R); renderScenarios(R); renderChart(R); renderCum(R); renderPhases(R); renderMonths(R);
+  renderKpis(R); renderScenarios(R); renderChart(R); renderCum(R); renderPhases(R); renderMonths();
 }
 
 function compNote(R){
@@ -514,12 +594,12 @@ function funnel(R){
 function scSummary(R){
   const so=R.selloutI, d=so==null?null:so-R.tgtI;
   return {sell: so==null?"期間内に完売せず":i2lbl(so), diff: so==null?"—": d>0?`${d}ヶ月遅れ`: d<0?`${-d}ヶ月前倒し`:"目標どおり", d,
-    comp: compNote(R).replace(/^・/,"")||"—", ad:R.adTotal, per:R.adTotal/Math.max(1,R.cTotal-R.ucTotal), ...funnel(R)};
+    comp: compNote(R).replace(/^・/,"")||"—", ad:R.promoTotal, per:R.promoTotal/Math.max(1,R.cTotal-R.ucTotal), ...funnel(R)};
 }
 function renderScenarios(Ract){
   const list=scenarioResults().filter(x=>x.R);
   document.getElementById("scLegend").innerHTML=list.map(x=>`<span><i style="background:var(${SC_COLORS[x.k%4]});height:3px"></i>${esc(x.c.name)}</span>`).join("")+'<span><i style="background:var(--target);height:3px"></i>目標ペース</span>';
-  document.getElementById("scTbl").innerHTML=`<thead><tr><th>シナリオ</th><th>完売予定</th><th>目標との差</th><th>竣工時</th><th>反響来場率</th><th>契約率</th><th>月当たり来場</th><th>広告費</th><th>1戸あたり</th></tr></thead><tbody>${
+  document.getElementById("scTbl").innerHTML=`<thead><tr><th>シナリオ</th><th>完売予定</th><th>目標との差</th><th>竣工時</th><th>反響来場率</th><th>契約率</th><th>月当たり来場</th><th>販促費</th><th>1戸あたり</th></tr></thead><tbody>${
     list.map(x=>{ const m=scSummary(x.R); return `<tr class="${x.k===S.activeScenario?"act":""}"><td><b>${esc(x.c.name)}</b></td><td class="num">${m.sell}</td>
       <td class="num"><span class="pill ${m.d==null||m.d>0?"bad":"good"}">${m.diff}</span></td><td class="num">${m.comp}</td><td class="num">${fmt(m.visRate,1)}%</td><td class="num">${fmt(m.yld,1)}%</td><td class="num">${fmt(m.perMonth,1)}組</td><td class="num">${oku(m.ad)}</td><td class="num">${fmt(m.per)}万円</td></tr>`; }).join("")}</tbody>`;
   // 累計契約率の比較グラフ
@@ -538,9 +618,9 @@ function renderScenarios(Ract){
 }
 function renderCum(R){
   const rs=R.rows;
-  const row=(lbl,f)=>`<tr><td>${lbl}</td>${rs.map(r=>`<td class="num">${fmt(f(r))}</td>`).join("")}</tr>`;
+  const row=(lbl,f,cls="")=>`<tr class="${cls}"><td>${lbl}</td>${rs.map(r=>`<td class="num">${fmt(f(r))}</td>`).join("")}</tr>`;
   document.getElementById("cumTbl").innerHTML=`<thead><tr><th>年月</th>${rs.map(r=>`<th>${i2short(r.i)}</th>`).join("")}</tr></thead><tbody>
-    ${row("反響",r=>r.cumInq)}${row("来場",r=>r.cumVis)}${row("契約",r=>r.sold)}</tbody>`;
+    ${row("反響（月）",r=>r.inq)}${row("反響（累計）",r=>r.cumInq,"cum")}${row("来場（月）",r=>r.vis)}${row("来場（累計）",r=>r.cumVis,"cum")}${row("契約（月）",r=>r.c)}${row("契約（累計）",r=>r.sold,"cum")}</tbody>`;
 }
 function renderKpis(R){
   const so=R.selloutI, delay = so==null? null : so-R.tgtI;
@@ -554,8 +634,8 @@ function renderKpis(R){
   const k=[
     ["完売予定", so==null?"—":i2lbl(so), `目標 ${i2lbl(R.tgtI)}${compNote(R)}`],
     ["総販売額", oku(R.totalRev), `${fmt(R.supply)}戸・平均${fmt(R.totalRev/R.supply)}万円`],
-    ["広告費 合計", oku(R.adTotal), `売上比 ${fmt(R.adTotal/R.totalRev*100,2)}%（予算 ${oku(R.budget)}）`],
-    ["1戸あたり広告費", `${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`, "契約1件の獲得コスト"],
+    ["販促費 合計", oku(R.promoTotal), `流動費 ${oku(R.adTotal)}・固定費 ${oku(R.fxTotal)}（売上比 ${fmt(R.promoTotal/R.totalRev*100,2)}%）`],
+    ["1戸あたり販促費", `${fmt(R.promoTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`, "契約1件あたり（アンダー販売を除く）"],
     ["月間契約ペース", `${fmt((R.cTotal-R.ucTotal)/saleMonths,1)}戸`, `目標達成に必要 ${fmt(needPace,1)}戸/月`],
     ["反響 → 来場 → 契約", `${fmt(R.inqTotal)}→${fmt(R.visTotal)}→${fmt(R.cTotal-R.ucTotal)}`, `反響あたり契約 ${fmt((R.cTotal-R.ucTotal)/Math.max(1,R.inqTotal)*100,1)}%`]
   ];
@@ -580,7 +660,8 @@ function renderChart(R){
   // 棒
   rows.forEach((r,k)=>{ const pc=r.c-r.uc;
     if(pc>0) g+=`<rect x="${x(k)+bw*.18}" y="${yC(pc)}" width="${bw*.64}" height="${yC(0)-yC(pc)}" fill="${css("--bar")}"><title>${i2lbl(r.i)}　契約 ${pc}戸</title></rect>`;
-    if(r.uc>0) g+=`<rect x="${x(k)+bw*.18}" y="${yC(r.c)}" width="${bw*.64}" height="${yC(pc)-yC(r.c)}" fill="${css("--under")}"><title>${i2lbl(r.i)}　アンダー販売 ${r.uc}戸</title></rect>`; });
+    if(r.uc>0) g+=`<rect x="${x(k)+bw*.18}" y="${yC(r.c)}" width="${bw*.64}" height="${yC(pc)-yC(r.c)}" fill="${css("--under")}"><title>${i2lbl(r.i)}　アンダー販売 ${r.uc}戸</title></rect>`;
+    if(r.c>0) g+=`<text class="val" x="${x(k)+bw/2}" y="${yC(r.c)-3}" text-anchor="middle" style="font-size:${bw<16?8:10}px">${r.c}</text>`; });
   if(R.colI>R.adI){ const ck=R.colI-rows[0].i; g+=`<line x1="${x(ck)+1}" x2="${x(ck)+1}" y1="${m.t+16}" y2="${m.t+ih}" stroke="${css("--accent")}" stroke-dasharray="1 3" opacity=".7"/><text x="${x(ck)+3}" y="${m.t+26}" class="lbl">集客開始</text>`; }
   // 目標累計線
   let tp=""; for(let k=0;k<n;k++){ const i=rows[0].i+k; const t= i<R.saleI?0:Math.min(1,(i-R.saleI+1)/(R.tgtI-R.saleI+1)); tp+=`${k?"L":"M"}${x(k)+bw/2},${yP(t)}`; }
@@ -608,20 +689,27 @@ function renderPhases(R){
   document.getElementById("phaseTbl").innerHTML=`<thead><tr><th>期</th><th>販売開始</th><th>戸数</th><th>平均価格(万円)</th><th>販売額</th><th>初月契約率</th><th>期完売</th></tr></thead><tbody>${urow}${rows}</tbody>`;
 }
 
-function renderMonths(R){
+function renderMonths(){
+  const k=Math.min(Math.max(0,monthTab|0),S.scenarios.length-1); monthTab=k;
+  document.getElementById("mTabs").innerHTML=S.scenarios.map((c,j)=>`<button type="button" class="tab" role="tab" data-mtab="${j}" aria-selected="${j===k}">${esc(c.name)}${j===S.activeScenario?'<span class="soon">表示中</span>':""}</button>`).join("");
+  const R=simScenario(k), tbl=document.getElementById("monthTbl"), note=document.getElementById("mNote");
+  if(!R){ tbl.innerHTML=""; note.textContent=""; return; }
+  note.innerHTML=`流動費の合計は計画値 <b class="num">${fmt(R.varBudget)}万円</b> で固定し、手入力した月以外の月で按分します。`+
+    (R.varOver>0.5?`<span class="warn">手入力の合計が計画値を ${fmt(R.varOver)}万円 超えています。</span>`: R.varShort>0.5?`<span class="warn">すべての月が手入力のため、計画値まで ${fmt(R.varShort)}万円 不足しています。</span>`:"");
   const body=R.rows.map(r=>{
     const gap=r.sold-Math.round(r.tgtCum);
     const cls=[r.i<R.saleI?"pre":"", r.launch?"launch":"", r.i===R.tgtI?"tgt":""].join(" ");
     return `<tr class="${cls}"><td>${i2lbl(r.i)}</td><td>${r.stage}</td>
-      <td class="${r.isOv?"ov":""}">${r.noAd?'<span class="hint">—</span>':`<input class="adin num" data-ym="${r.ym}" type="number" min="0" step="10" value="${Math.round(r.ad)}" aria-label="${i2lbl(r.i)}の広告費">`}</td>
+      <td class="${r.isOv?"ov":""}">${r.noAd?'<span class="hint">—</span>':`<input class="adin num" data-ym="${r.ym}" data-sck="${k}" type="number" min="0" step="10" value="${Math.round(r.ad)}" aria-label="${i2lbl(r.i)}の流動費">`}</td>
+      <td class="num">${r.fx?fmt(r.fx):'<span class="hint">—</span>'}</td><td class="num">${fmt(r.promo)}</td>
       <td class="num">${fmt(r.inq)}</td><td class="num">${fmt(r.vis)}</td>
       <td class="num"><b>${r.c}</b></td><td class="num">${r.sold}</td><td class="num">${fmt(r.rate*100,1)}%</td>
       <td class="num">${r.stock}</td><td class="num">${Math.round(r.tgtCum)}</td>
       <td class="num ${gap<0?"neg":gap>0?"pos":""}">${r.i<R.saleI?"—":(gap>0?"+":"")+gap}</td>
       <td class="num">${fmt(r.cum/10000,2)}</td></tr>`;}).join("");
-  const T=R;
-  document.getElementById("monthTbl").innerHTML=`<thead><tr><th>年月</th><th>状況</th><th>広告費(万円)</th><th>反響</th><th>来場</th><th>契約</th><th>累計契約</th><th>累計率</th><th>残戸数</th><th>目標累計</th><th>目標差</th><th>累計契約額(億円)</th></tr></thead>
-  <tbody>${body}</tbody><tfoot><tr><th>合計</th><th></th><th class="num">${fmt(T.adTotal)}</th><th class="num">${fmt(T.inqTotal)}</th><th class="num">${fmt(T.visTotal)}</th><th class="num">${T.cTotal}</th><th></th><th></th><th></th><th></th><th></th><th class="num">${fmt(T.revTotal/10000,2)}</th></tr></tfoot>`;
+  const T=R, L=R.rows.at(-1);
+  tbl.innerHTML=`<thead><tr><th>年月</th><th>状況</th><th>流動費・広告<br>(万円)</th><th>固定費<br>(万円)</th><th>販促費計<br>(万円)</th><th>反響</th><th>来場</th><th>契約</th><th>累計契約</th><th>累計率</th><th>残戸数</th><th>目標累計</th><th>目標差</th><th>累計契約額<br>(億円)</th></tr></thead>
+  <tbody>${body}</tbody><tfoot><tr><th>合計</th><th></th><th class="num">${fmt(T.adTotal)}</th><th class="num">${fmt(T.fxTotal)}</th><th class="num">${fmt(T.promoTotal)}</th><th class="num">${fmt(T.inqTotal)}</th><th class="num">${fmt(T.visTotal)}</th><th class="num">${T.cTotal}</th><th class="num">${L.sold}</th><th class="num">${fmt(L.rate*100,1)}%</th><th class="num">${L.stock}</th><th></th><th></th><th class="num">${fmt(T.revTotal/10000,2)}</th></tr></tfoot>`;
 }
 
 function renderGantt(R){
@@ -663,32 +751,37 @@ document.addEventListener("change",e=>{
   if(t.dataset.path){ set(t.dataset.path, t.type==="checkbox"? t.checked : t.type==="number"? (t.value===""?0:+t.value) : t.value); }
   else if(t.dataset.ph!=null){ const p=S.phases[+t.dataset.ph]; p[t.dataset.k]= t.type==="number"?+t.value:t.value; }
   else if(t.dataset.vis){ S.visible[t.dataset.vis]=t.checked; save(); renderTabs(); renderInputs(); render(); return; }
-  else if(t.dataset.scsel!=null){ S.activeScenario=+t.dataset.scsel; save(); render(); return; }
+  else if(t.dataset.scsel!=null){ S.activeScenario=+t.dataset.scsel; monthTab=S.activeScenario; save(); render(); return; }
   else if(t.dataset.sc!=null){ const c=S.scenarios[+t.dataset.sc]; c[t.dataset.k]= t.type==="number"? +t.value : t.value; save(); render(); return; }
-  else if(t.dataset.ym){ if(t.value==="") delete S.adOverride[t.dataset.ym]; else S.adOverride[t.dataset.ym]=+t.value; }
+  else if(t.dataset.ym){ const c=S.scenarios[+t.dataset.sck]; if(!c) return; c.adOverride=c.adOverride||{}; if(t.value==="") delete c.adOverride[t.dataset.ym]; else c.adOverride[t.dataset.ym]=+t.value; save(); render(); return; }
+  else if(t.dataset.fx!=null){ const f=S.fixedItems[+t.dataset.fx]; f[t.dataset.k]= t.type==="number"? +t.value : t.value; save(); renderInputs(); render(); return; }
   else return;
-  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo|units)|sales\.(adStart|collectStart|adMode|adRate|adPerUnit))/.test(t.dataset.path||"")) renderInputs(); render();
+  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo|units)|sales\.(adStart|collectStart|adMode|adRate|adPerUnit|varRate))/.test(t.dataset.path||"")) renderInputs(); render();
 });
 document.addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t)return;
   if(t.dataset.tab){ activeTab=t.dataset.tab; renderTabs(); renderInputs(); return; }
+  if(t.dataset.sub){ salesSub=t.dataset.sub; activeTab="sales"; renderTabs(); renderInputs(); return; }
+  if(t.dataset.mtab!=null){ monthTab=+t.dataset.mtab; renderMonths(); return; }
+  if(t.dataset.fxdel!=null){ S.fixedItems.splice(+t.dataset.fxdel,1); save(); renderInputs(); render(); return; }
+  if(t.id==="addFx"){ S.fixedItems.push({name:"新しい項目",share:0,timing:"adToEnd",start:"",end:""}); save(); renderInputs(); render(); return; }
   if(t.dataset.del!=null){ S.phases.splice(+t.dataset.del,1); save(); renderInputs(); render(); return; }
   if(t.id==="addPhase"){ const last=S.phases.at(-1); const ni=last&&validYm(last.start)?ym2i(last.start)+4:ym2i(S.sales.adStart)+2;
     S.phases.push({name:`第${S.phases.length+1}期`,start:i2ym(ni),units:10,adj:0}); save(); renderInputs(); render(); return; }
-  if(t.id==="btnReset"){ S=structuredClone(SAMPLE); save(); renderInputs(); render(); toast("サンプルに戻しました"); return; }
-  if(t.id==="btnClearOv"){ S.adOverride={}; save(); render(); toast("広告費の手入力を戻しました"); return; }
+  if(t.id==="btnReset"){ S=structuredClone(SAMPLE); monthTab=S.activeScenario; save(); renderInputs(); render(); toast("サンプルに戻しました"); return; }
+  if(t.id==="btnClearOv"){ const c=S.scenarios[monthTab]; if(c) c.adOverride={}; save(); render(); toast(`${c?c.name:""}シナリオの流動費の手入力を戻しました`); return; }
   if(t.id==="btnJson"){ copy(JSON.stringify(S,null,1),"設定をコピーしました"); return; }
-  if(t.id==="btnCsv"){ const R=simulateSales(S); if(!R)return;
-    const h="年月,状況,広告費(万円),反響,来場,契約,累計契約,累計率,残戸数,目標累計,累計反響,累計来場";
-    const lines=R.rows.map(r=>[r.ym,r.stage,Math.round(r.ad),r.inq.toFixed(1),r.vis.toFixed(1),r.c,r.sold,(r.rate*100).toFixed(1),r.stock,Math.round(r.tgtCum),Math.round(r.cumInq),Math.round(r.cumVis)].join(","));
-    copy([h,...lines].join("\n"),"月次表をコピーしました。Excel等に貼り付けできます"); return; }
+  if(t.id==="btnCsv"){ const R=simScenario(monthTab); if(!R)return;
+    const h="年月,状況,流動費・広告(万円),固定費(万円),販促費計(万円),反響,来場,契約,累計契約,累計率,残戸数,目標累計,累計反響,累計来場";
+    const lines=R.rows.map(r=>[r.ym,r.stage,Math.round(r.ad),Math.round(r.fx),Math.round(r.promo),r.inq.toFixed(1),r.vis.toFixed(1),r.c,r.sold,(r.rate*100).toFixed(1),r.stock,Math.round(r.tgtCum),Math.round(r.cumInq),Math.round(r.cumVis)].join(","));
+    copy([h,...lines].join("\n"),`月次表（${S.scenarios[monthTab]?.name||""}）をコピーしました。Excel等に貼り付けできます`); return; }
   if(t.id==="btnPaste"){ toast("コピーした設定をこのページ上で貼り付け（⌘V / Ctrl+V）してください"); pasteArmed=true; return; }
 });
 let pasteArmed=false;
 document.addEventListener("paste",e=>{
   if(!pasteArmed && e.target.closest("input")) return;
   const txt=e.clipboardData?.getData("text")||"";
-  try{ const o=JSON.parse(txt); if(o&&o.sales&&o.phases){ S={...structuredClone(SAMPLE),...o,scenarios:Array.isArray(o.scenarios)&&o.scenarios.length&&o.scenarios.every(c=>c.firstRate!=null)?o.scenarios:structuredClone(SAMPLE.scenarios),sales:{...SAMPLE.sales,...o.sales},under:{...SAMPLE.under,on:false,...(o.under||{})},visible:{...SAMPLE.visible,...(o.visible||{})},schedule:{...structuredClone(SAMPLE.schedule),...(o.schedule||{})},project:{...SAMPLE.project,...o.project}}; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
+  try{ const o=normalize(JSON.parse(txt)); if(o){ S={...structuredClone(SAMPLE),...o}; monthTab=S.activeScenario; save(); renderInputs(); render(); toast("設定を読み込みました"); e.preventDefault(); } else if(pasteArmed) toast("設定の形式ではありません"); }
   catch(_){ if(pasteArmed) toast("設定の形式ではありません"); }
   pasteArmed=false;
 });
@@ -712,40 +805,56 @@ function assumptionRows(R){
   return [["物件名",S.project.name],["シナリオ",S.scenarios[S.activeScenario]?.name||""],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
     ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],...(keyDates().comp!=null?[["竣工",i2lbl(keyDates().comp)]]:[]),...(keyDates().ho!=null?[["引渡し",i2lbl(keyDates().ho)]]:[]),
-    ["広告予算の基準",s.adMode==="perUnit"?"1戸あたり金額":"販売額に対する率"],(s.adMode==="perUnit"?["1戸あたり広告費",s.adPerUnit+" 万円/戸"]:["広告費率",s.adRate+" %"]),["第1期販売率",(c.firstRate??"")+" %"],["月間来場数",(c.visits??"")+" 組/月"],["反響来場率（反響→来場）",(c.visitRate??"")+" %"],["契約率（歩留）",(c.yieldRate??"")+" %"],["目標超過後の広告",s.extendRate+" %"]];
+    ["販促費の基準",s.adMode==="perUnit"?"1戸あたり金額":"販売額に対する率"],(s.adMode==="perUnit"?["1戸あたり販促費",s.adPerUnit+" 万円/戸"]:["販促費率",s.adRate+" %"]),["販促費（計画値）",oku(R.budget)],["流動費の割合",(+s.varRate||0)+" %"],["流動費・広告（計画値・上限）",oku(R.varBudget)],["固定費",oku(R.fixBudget)],["目標超過後の流動費",s.extendRate+" %"],
+    ["第1期販売率",(c.firstRate??"")+" %"],["月間来場数",(c.visits??"")+" 組/月"],["反響来場率（反響→来場）",(c.visitRate??"")+" %"],["契約率（歩留）",(c.yieldRate??"")+" %"]];
 }
 
-function buildXlsx(){
-  const R=simulateSales(S); if(!R) throw new Error("入力が不足しています");
-  const wb=XLSX.utils.book_new();
-  const head=["年月","状況","広告費(万円)","反響","来場","契約","累計契約","累計契約率","残戸数","目標累計","目標差","当月契約額(万円)","累計契約額(万円)","累計反響","累計来場"];
-  const rows=R.rows.map(r=>[i2lbl(r.i),r.stage,Math.round(r.ad),+r.inq.toFixed(1),+r.vis.toFixed(1),r.c,r.sold,+(r.rate).toFixed(4),r.stock,Math.round(r.tgtCum),r.i<R.saleI?null:r.sold-Math.round(r.tgtCum),Math.round(r.rev),Math.round(r.cum),Math.round(r.cumInq),Math.round(r.cumVis)]);
-  const n=rows.length;
-  const tot=["合計","",{f:`SUM(C2:C${n+1})`},{f:`SUM(D2:D${n+1})`},{f:`SUM(E2:E${n+1})`},{f:`SUM(F2:F${n+1})`},"","","","","",{f:`SUM(L2:L${n+1})`},""];
+const sheetName=(base,used)=>{ let n=String(base).replace(/[\[\]:*?\/\\]/g,"").slice(0,28)||"シート"; let t=n,j=2; while(used.has(t)) t=`${n}${j++}`; used.add(t); return t; };
+function monthSheet(R){
+  const head=["年月","状況","流動費・広告(万円)","固定費(万円)","販促費計(万円)","反響","来場","契約","累計契約","累計契約率","残戸数","目標累計","目標差","当月契約額(万円)","累計契約額(万円)","累計反響","累計来場"];
+  const rows=R.rows.map(r=>[i2lbl(r.i),r.stage,Math.round(r.ad),Math.round(r.fx),Math.round(r.promo),+r.inq.toFixed(1),+r.vis.toFixed(1),r.c,r.sold,+(r.rate).toFixed(4),r.stock,Math.round(r.tgtCum),r.i<R.saleI?null:r.sold-Math.round(r.tgtCum),Math.round(r.rev),Math.round(r.cum),Math.round(r.cumInq),Math.round(r.cumVis)]);
+  const n=rows.length, S_=c=>({f:`SUM(${c}2:${c}${n+1})`});
+  const tot=["合計","",S_("C"),S_("D"),S_("E"),S_("F"),S_("G"),S_("H"),"","","","","",S_("N"),"","",""];
   const ws=XLSX.utils.aoa_to_sheet([head,...rows,tot]);
-  ws["!cols"]=[12,9,12,8,8,7,9,11,7,9,8,15,15,9,9].map(w=>({wch:w}));
-  for(let k=2;k<=n+1;k++){ const c=ws["H"+k]; if(c) c.z="0.0%"; ["C","L","M"].forEach(col=>{ if(ws[col+k]) ws[col+k].z="#,##0"; }); }
+  ws["!cols"]=[12,9,15,11,13,8,8,7,9,11,7,9,8,15,15,9,9].map(w=>({wch:w}));
+  for(let k=2;k<=n+2;k++){ const c=ws["J"+k]; if(c) c.z="0.0%"; ["C","D","E","N","O"].forEach(col=>{ if(ws[col+k]) ws[col+k].z="#,##0"; }); }
   ws["!freeze"]={xSplit:1,ySplit:1};
-  XLSX.utils.book_append_sheet(wb,ws,"月次計画表");
-  const ph=[["期","販売開始","戸数","平均価格(万円)","販売額(万円)","初月契約","初月契約率","期完売"],
-    ...(R.U?[[R.U.name,`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}`,R.U.units,Math.round(R.U.price),Math.round(R.U.units*R.U.price),null,null,R.U.done!=null?i2lbl(R.U.done):"—"]]:[]),
-    ...R.P.map(p=>[p.name,i2lbl(p.si),p.units,Math.round(p.price),Math.round(p.units*p.price),p.first,+(p.first/p.units).toFixed(4),p.done!=null?i2lbl(p.done):"未完売"])];
-  const ws2=XLSX.utils.aoa_to_sheet(ph); ws2["!cols"]=[12,20,6,14,14,9,11,12].map(w=>({wch:w}));
-  for(let k=2;k<=ph.length;k++){ if(ws2["G"+k]) ws2["G"+k].z="0.0%"; ["D","E"].forEach(c=>{ if(ws2[c+k]) ws2[c+k].z="#,##0"; }); }
-  XLSX.utils.book_append_sheet(wb,ws2,"期別");
-  const ws3=XLSX.utils.aoa_to_sheet([["項目","値"],...assumptionRows(R),[],["出力日",new Date().toLocaleDateString("ja-JP")],["注記","マンション販売計画シミュレーターの試算値です。"]]);
-  ws3["!cols"]=[{wch:20},{wch:30}];
-  XLSX.utils.book_append_sheet(wb,ws3,"前提条件");
-  const sc=[["シナリオ","第1期販売率(%)","月間来場数(入力)","反響来場率(%)","契約率・歩留(%)","完売予定","目標との差","竣工時","反響来場率(実績,%)","契約率(実績,%)","月当たり来場数(総来場÷対象月)","広告費(万円)","1戸あたり広告費(万円)"],
-    ...scenarioResults().filter(x=>x.R).map(x=>{ const m=scSummary(x.R); return [x.c.name,x.c.firstRate,x.c.visits,x.c.visitRate,x.c.yieldRate,m.sell,m.diff,m.comp,+m.visRate.toFixed(1),+m.yld.toFixed(1),+m.perMonth.toFixed(1),Math.round(m.ad),Math.round(m.per)]; })];
-  const ws4=XLSX.utils.aoa_to_sheet(sc); ws4["!cols"]=[10,14,15,10,15,14,12,20,14,14,14,26,13,18].map(w=>({wch:w}));
-  XLSX.utils.book_append_sheet(wb,ws4,"シナリオ比較");
+  return ws;
+}
+function buildXlsx(){
+  const all=scenarioResults().filter(x=>x.R); if(!all.length) throw new Error("入力が不足しています");
+  const R=all.find(x=>x.k===S.activeScenario)?.R||all[0].R;
+  const wb=XLSX.utils.book_new(), used=new Set();
+  // 月次計画表：シナリオごとに1シート
+  all.forEach(x=>XLSX.utils.book_append_sheet(wb,monthSheet(x.R),sheetName(`月次計画表_${x.c.name}`,used)));
+  const ph=[["シナリオ","期","販売開始","戸数","平均価格(万円)","販売額(万円)","初月契約","初月契約率","期完売"]];
+  all.forEach(x=>{ const Q=x.R;
+    if(Q.U) ph.push([x.c.name,Q.U.name,`${i2lbl(Q.U.si)}〜${i2lbl(Q.U.ei)}`,Q.U.units,Math.round(Q.U.price),Math.round(Q.U.units*Q.U.price),null,null,Q.U.done!=null?i2lbl(Q.U.done):"—"]);
+    Q.P.forEach(p=>ph.push([x.c.name,p.name,i2lbl(p.si),p.units,Math.round(p.price),Math.round(p.units*p.price),p.first,+(p.first/p.units).toFixed(4),p.done!=null?i2lbl(p.done):"未完売"])); });
+  const ws2=XLSX.utils.aoa_to_sheet(ph); ws2["!cols"]=[10,12,20,6,14,14,9,11,12].map(w=>({wch:w}));
+  for(let k=2;k<=ph.length;k++){ if(ws2["H"+k]) ws2["H"+k].z="0.0%"; ["E","F"].forEach(c=>{ if(ws2[c+k]) ws2[c+k].z="#,##0"; }); }
+  XLSX.utils.book_append_sheet(wb,ws2,sheetName("期別",used));
+  // 固定費の内訳（計上期間はシナリオごと）
+  const fx=[["項目","割合(%)","金額(万円)","計上の時期",...all.map(x=>`計上期間（${x.c.name}）`)]];
+  R.items.forEach((f,j)=>fx.push([f.name,+f.share||0,Math.round(f.amt),FX_TIMING[f.timing]||"",...all.map(x=>{ const g=x.R.items[j]; return g&&g.si!=null? (g.si===g.ei?i2lbl(g.si):`${i2lbl(g.si)}〜${i2lbl(g.ei)}`) : "—"; })]));
+  fx.push(["合計",R.items.reduce((a,f)=>a+(+f.share||0),0),Math.round(R.items.reduce((a,f)=>a+f.amt,0)),"",...all.map(()=>"")]);
+  fx.push([],["固定費（計画値）",null,Math.round(R.fixBudget)],["流動費・広告（計画値・上限）",null,Math.round(R.varBudget)],["販促費（計画値）",null,Math.round(R.budget)]);
+  const ws5=XLSX.utils.aoa_to_sheet(fx); ws5["!cols"]=[26,9,12,26,...all.map(()=>22)].map(w=>({wch:w}));
+  for(let k=2;k<=fx.length;k++){ if(ws5["C"+k]) ws5["C"+k].z="#,##0"; }
+  XLSX.utils.book_append_sheet(wb,ws5,sheetName("固定費の内訳",used));
+  const ws3=XLSX.utils.aoa_to_sheet([["項目","値"],...assumptionRows(R),[],["出力日",new Date().toLocaleDateString("ja-JP")],["注記","マンション販売計画シミュレーターの試算値です。シナリオ別の入力値は「シナリオ比較」を参照。"]]);
+  ws3["!cols"]=[{wch:26},{wch:30}];
+  XLSX.utils.book_append_sheet(wb,ws3,sheetName("前提条件",used));
+  const sc=[["シナリオ","第1期販売率(%)","月間来場数(入力)","反響来場率(%)","契約率・歩留(%)","完売予定","目標との差","竣工時","反響来場率(実績,%)","契約率(実績,%)","月当たり来場数(総来場÷対象月)","流動費・広告(万円)","固定費(万円)","販促費計(万円)","1戸あたり販促費(万円)"],
+    ...all.map(x=>{ const m=scSummary(x.R); return [x.c.name,x.c.firstRate,x.c.visits,x.c.visitRate,x.c.yieldRate,m.sell,m.diff,m.comp,+m.visRate.toFixed(1),+m.yld.toFixed(1),+m.perMonth.toFixed(1),Math.round(x.R.adTotal),Math.round(x.R.fxTotal),Math.round(x.R.promoTotal),Math.round(m.per)]; })];
+  const ws4=XLSX.utils.aoa_to_sheet(sc); ws4["!cols"]=[10,14,15,13,15,14,12,20,17,14,26,16,12,14,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws4,sheetName("シナリオ比較",used));
   return XLSX.write(wb,{bookType:"xlsx",type:"array"});
 }
 
 async function buildPptx(){
-  const R=simulateSales(S); if(!R) throw new Error("入力が不足しています");
-  const pptx=new PptxGenJS(); pptx.layout="LAYOUT_WIDE"; // 13.33 x 7.5 in。2枚構成：①計画の全体像 ②月次計画表
+  const R=simScenario(S.activeScenario); if(!R) throw new Error("入力が不足しています");
+  const pptx=new PptxGenJS(); pptx.layout="LAYOUT_WIDE"; // 13.33 x 7.5 in。①計画の全体像 ②以降 シナリオごとの月次計画表
   const C={ink:"262A29",mut:"6B7270",acc:"3C5A5E",tgt:"9B7A35",line:"DCDFDD",bg2:"F0F1F0",pre:"C9CFCD",good:"3E6B4F",warn:"9B7A35",bad:"9A4B3C",und:"8D8197"};
   const F="Yu Gothic";
   const so=R.selloutI, delay=so==null?null:so-R.tgtI;
@@ -801,33 +910,33 @@ async function buildPptx(){
   const labels=R.rows.map(r=>i2short(r.i));
   sl.addChart([
     {type:pptx.ChartType.bar,data: R.U? [{name:"月間契約数",labels,values:R.rows.map(r=>r.c-r.uc)},{name:"アンダー販売",labels,values:R.rows.map(r=>r.uc)}] : [{name:"月間契約数",labels,values:R.rows.map(r=>r.c)}],
-      options:{chartColors:[C.acc,C.und],barGapWidthPct:40,barGrouping:"stacked"}},
+      options:{chartColors:[C.acc,C.und],barGapWidthPct:40,barGrouping:"stacked",showValue:true,dataLabelFormatCode:"#,##0;;;",dataLabelFontSize:6.5,dataLabelColor:C.ink,dataLabelPosition:"inEnd"}},
     {type:pptx.ChartType.line,data:[{name:"累計契約率(%)",labels,values:R.rows.map(r=>+(r.rate*100).toFixed(1))},{name:"目標ペース(%)",labels,values:R.rows.map(r=>+(r.tgtCum/R.supply*100).toFixed(1))}],
       options:{chartColors:[C.ink,C.tgt],lineSize:1.5,lineDataSymbol:"none",secondaryValAxis:true,secondaryCatAxis:true}}
-  ],{x:LX-0.1,y:cy+0.2,w:LW+0.2,h:7.2-cy-0.25-0.82,fontFace:F,showLegend:true,legendPos:"t",legendFontSize:8,
+  ],{x:LX-0.1,y:cy+0.2,w:LW+0.2,h:7.2-cy-0.25-1.14,fontFace:F,showLegend:true,legendPos:"t",legendFontSize:8,
     valAxes:[{valAxisMinVal:0,valAxisLabelFontSize:7},{valAxisMinVal:0,valAxisMaxVal:100,valGridLine:{style:"none"},valAxisLabelFontSize:7}],
     catAxes:[{catAxisLabelFontSize:7},{catAxisHidden:true}]});
-  // 契約推移の下：反響・来場・契約の累計（月が多い場合は間引き、最終月は必ず表示）
+  // 契約推移の下：反響・来場・契約の月次と累計（月が多い場合は間引き、最終月は必ず表示）
   { const rs=R.rows, step=Math.ceil(rs.length/22), pickR=rs.filter((r,j)=>j%step===0||j===rs.length-1);
-    const cw=(LW-0.55)/pickR.length, cell=(t,o={})=>({text:t,options:o});
-    const hdr=[cell("累計",{color:C.mut,fill:{color:C.bg2}}),...pickR.map(r=>cell(i2short(r.i),{color:C.mut,fill:{color:C.bg2}}))];
-    const line=(l,f)=>[cell(l,{color:C.mut}),...pickR.map(r=>cell(fmt(f(r))))];
-    sl.addTable([hdr,line("反響",r=>r.cumInq),line("来場",r=>r.cumVis),line("契約",r=>r.sold)],
-      {x:LX,y:7.2-0.78,w:LW,colW:[0.55,...pickR.map(()=>cw)],fontFace:F,fontSize:pickR.length>18?6:6.5,color:C.ink,rowH:0.17,align:"right",border:{type:"solid",color:C.line,pt:0.4},margin:0.01});
-    if(step>1) sl.addText(`※${step}ヶ月ごとに表示`,{x:LX,y:7.22,w:3,h:0.16,fontFace:F,fontSize:6.5,color:C.mut,margin:0}); }
+    const cw=(LW-0.7)/pickR.length, cell=(t,o={})=>({text:t,options:o}), cumO={fill:{color:C.bg2}};
+    const hdr=[cell("年月",{color:C.mut,fill:{color:C.bg2}}),...pickR.map(r=>cell(i2short(r.i),{color:C.mut,fill:{color:C.bg2}}))];
+    const line=(l,f,o={})=>[cell(l,{color:C.mut,...o}),...pickR.map(r=>cell(fmt(f(r)),o))];
+    sl.addTable([hdr,line("反響（月）",r=>r.inq),line("反響（累計）",r=>r.cumInq,cumO),line("来場（月）",r=>r.vis),line("来場（累計）",r=>r.cumVis,cumO),line("契約（月）",r=>r.c),line("契約（累計）",r=>r.sold,cumO)],
+      {x:LX,y:7.2-1.1,w:LW,colW:[0.7,...pickR.map(()=>cw)],fontFace:F,fontSize:pickR.length>18?6:6.5,color:C.ink,rowH:0.155,align:"right",border:{type:"solid",color:C.line,pt:0.4},margin:0.01});
+    if(step>1) sl.addText(`※${step}ヶ月ごとに表示（月の数はその月の値）`,{x:LX,y:7.22,w:4,h:0.16,fontFace:F,fontSize:6.5,color:C.mut,margin:0}); }
 
   // 右：主要指標
   const RX=8.85, RW=4.08;
   label(sl,"主要指標",RX,1.15,3);
   const saleMonths=(so??R.rows.at(-1).i)-R.saleI+1;
   const kp=[["完売予定",so==null?"—":i2lbl(so)],["完売目標",i2lbl(R.tgtI)],...(KD.comp!=null?[["竣工",`${i2lbl(KD.comp)}（${compNote(R).slice(1)}）`]]:[]),...(KD.ho!=null?[["引渡し",i2lbl(KD.ho)]]:[]),["総販売額",oku(R.totalRev)],["平均販売価格",`${fmt(S.project.avgPrice)}万円`],
-    ["広告費 合計",`${oku(R.adTotal)}（${fmt(R.adTotal/R.totalRev*100,2)}%）`],["1戸あたり広告費",`${fmt(R.adTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`],
+    ["販促費 合計",`${oku(R.promoTotal)}（売上比 ${fmt(R.promoTotal/R.totalRev*100,2)}%）`],["　流動費／固定費",`${oku(R.adTotal)}／${oku(R.fxTotal)}`],["1戸あたり販促費",`${fmt(R.promoTotal/Math.max(1,R.cTotal-R.ucTotal))}万円`],
     ["月間契約ペース",`${fmt((R.cTotal-R.ucTotal)/saleMonths,1)}戸（必要 ${fmt(R.phaseSupply/(R.tgtI-R.saleI+1),1)}戸）`],["反響→来場→契約",`${fmt(R.inqTotal)}→${fmt(R.visTotal)}→${fmt(R.cTotal-R.ucTotal)}`]];
   sl.addTable(kp.map(([k,v])=>[{text:k,options:{color:C.mut}},{text:v,options:{bold:true,align:"right"}}]),
-    {x:RX,y:1.42,w:RW,colW:[1.45,RW-1.45],fontFace:F,fontSize:9,color:C.ink,rowH:0.24,border:{type:"solid",color:C.line,pt:0.5},margin:0.04});
+    {x:RX,y:1.42,w:RW,colW:[1.45,RW-1.45],fontFace:F,fontSize:8.5,color:C.ink,rowH:0.22,border:{type:"solid",color:C.line,pt:0.5},margin:0.03});
 
   // 右中：期別
-  const py=1.42+kp.length*0.24+0.2;
+  const py=1.42+kp.length*0.22+0.16;
   label(sl,"期別",RX,py,3);
   const hd=["期","販売開始","戸数","平均価格","初月契約率","期完売"].map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
   const body=R.P.map(p=>{ const fr=p.first/p.units*100; const col=fr>=70?C.good:fr>=50?C.warn:C.bad;
@@ -836,36 +945,41 @@ async function buildPptx(){
   sl.addTable([hd,...body],{x:RX,y:py+0.27,w:RW,colW:[0.72,0.68,0.45,0.75,0.78,0.7],fontFace:F,fontSize:8,color:C.ink,rowH:0.22,align:"center",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
 
   // 右下：シナリオ比較
-  const ay=py+0.27+(body.length+1)*0.22+0.2;
+  const ay=py+0.27+(body.length+1)*0.22+0.16;
   label(sl,"シナリオ比較",RX,ay,3);
   const sh=["シナリオ","反響来場率","契約率","月来場","完売予定","目標差"].map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
   const sb=scenarioResults().filter(x=>x.R).map(x=>{ const m=scSummary(x.R), act=x.k===S.activeScenario, o=act?{bold:true}:{};
     return [{text:x.c.name+(act?"●":""),options:o},{text:`${fmt(m.visRate,1)}%`,options:o},{text:`${fmt(m.yld,1)}%`,options:o},{text:`${fmt(m.perMonth,0)}組`,options:o},{text:x.R.selloutI==null?"完売せず":i2short(x.R.selloutI),options:o},{text:m.diff,options:{...o,color:m.d==null||m.d>0?C.bad:C.good}}]; });
   sl.addTable([sh,...sb],{x:RX,y:ay+0.27,w:RW,colW:[0.6,0.8,0.6,0.6,0.6,0.88],fontFace:F,fontSize:7.5,color:C.ink,rowH:0.22,align:"center",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
 
-  /* ===== 2枚目：月次計画表（1枚に収める） ===== */
-  sl=pptx.addSlide();
-  head(sl,`${safeName()}　月次計画表`,`${i2lbl(R.rows[0].i)}〜${i2lbl(R.rows.at(-1).i)}（${R.rows.length}ヶ月）`);
-  const cols=["年月","状況","広告費(万円)","反響","来場","累計反響","累計来場","契約","累計契約","累計率","残戸数","目標累計","目標差","累計契約額(億円)"];
-  const toRow=r=>{ const g=r.sold-Math.round(r.tgtCum);
-    return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),fmt(r.inq),fmt(r.vis),fmt(r.cumInq),fmt(r.cumVis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
-      r.i<R.saleI?"—":{text:(g>0?"+":"")+g,options:{color:g<0?C.bad:g>0?C.good:C.ink}},fmt(r.cum/10000,2)]; };
-  const n=R.rows.length, twoCol=n>30;
-  const avail=7.15-1.15;
-  if(!twoCol){
-    const rh=Math.min(0.3,avail/(n+2)), fs=rh>=0.26?9:rh>=0.2?8:7;
-    const hdr=cols.map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
-    const tot=["合計","",fmt(R.adTotal),fmt(R.inqTotal),fmt(R.visTotal),"","",{text:String(R.cTotal),options:{bold:true}},"","","","","",fmt(R.revTotal/10000,2)].map(v=>typeof v==="string"?{text:v,options:{bold:true,fill:{color:C.bg2}}}:{...v,options:{...v.options,fill:{color:C.bg2}}});
-    sl.addTable([hdr,...R.rows.map(toRow),tot],{x:0.4,y:1.15,w:12.53,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
-  } else {
-    // 31ヶ月以上は左右2段組（列を絞る）
-    const pick=[0,2,7,8,9,10,12];
-    const hdr=pick.map(k=>({text:cols[k],options:{color:C.mut,fill:{color:C.bg2}}}));
-    const half=Math.ceil(n/2), rh=Math.min(0.24,avail/(half+1)), fs=rh>=0.2?8:rh>=0.15?7:6;
-    [R.rows.slice(0,half),R.rows.slice(half)].forEach((chunk,k)=>{
-      sl.addTable([hdr,...chunk.map(r=>{ const row=toRow(r); return pick.map(i=>row[i]); })],{x:0.4+k*6.33,y:1.15,w:6.2,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02}); });
-  }
-  sl.addText("詳細な前提条件と全項目はExcel出力を参照",{x:0.4,y:7.2,w:8,h:0.2,fontFace:F,fontSize:8,color:C.mut,margin:0});
+  /* ===== 2枚目以降：シナリオごとの月次計画表（各1枚に収める） ===== */
+  const cols=["年月","状況","流動費・広告(万円)","固定費(万円)","販促費計(万円)","反響","来場","累計反響","累計来場","契約","累計契約","累計率","残戸数","目標累計","目標差","累計契約額(億円)"];
+  scenarioResults().filter(x=>x.R).forEach(x=>{ const Q=x.R;
+    sl=pptx.addSlide();
+    head(sl,`${safeName()}　月次計画表（${x.c.name}シナリオ）`,`${i2lbl(Q.rows[0].i)}〜${i2lbl(Q.rows.at(-1).i)}（${Q.rows.length}ヶ月）　完売予定 ${Q.selloutI==null?"—":i2lbl(Q.selloutI)}　販促費 ${oku(Q.promoTotal)}（流動費 ${oku(Q.adTotal)}・固定費 ${oku(Q.fxTotal)}）`);
+    const toRow=r=>{ const g=r.sold-Math.round(r.tgtCum);
+      return [i2lbl(r.i),r.stage,r.noAd?"—":fmt(r.ad),r.fx?fmt(r.fx):"—",fmt(r.promo),fmt(r.inq),fmt(r.vis),fmt(r.cumInq),fmt(r.cumVis),{text:String(r.c),options:{bold:true}},String(r.sold),`${fmt(r.rate*100,1)}%`,String(r.stock),String(Math.round(r.tgtCum)),
+        r.i<Q.saleI?"—":{text:(g>0?"+":"")+g,options:{color:g<0?C.bad:g>0?C.good:C.ink}},fmt(r.cum/10000,2)]; };
+    const L=Q.rows.at(-1);
+    const totRow=["合計","",fmt(Q.adTotal),fmt(Q.fxTotal),fmt(Q.promoTotal),fmt(Q.inqTotal),fmt(Q.visTotal),"","",String(Q.cTotal),String(L.sold),`${fmt(L.rate*100,1)}%`,String(L.stock),"","",fmt(Q.revTotal/10000,2)];
+    const totCell=v=>({text:v,options:{bold:true,fill:{color:C.bg2}}});
+    const n=Q.rows.length, twoCol=n>30, avail=7.15-1.15;
+    if(!twoCol){
+      const rh=Math.min(0.3,avail/(n+2)), fs=rh>=0.26?8.5:rh>=0.2?7.5:6.5;
+      const hdr=cols.map(t=>({text:t,options:{color:C.mut,fill:{color:C.bg2}}}));
+      sl.addTable([hdr,...Q.rows.map(toRow),totRow.map(totCell)],{x:0.4,y:1.15,w:12.53,colW:[1.0,0.9,1.05,0.9,1.0,0.6,0.6,0.8,0.8,0.55,0.7,0.68,0.6,0.7,0.6,1.05],fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02});
+    } else {
+      // 31ヶ月以上は左右2段組（列を絞る）。合計は右段の末尾
+      const pick=[0,2,3,9,10,11,12,14];
+      const hdr=pick.map(k=>({text:cols[k],options:{color:C.mut,fill:{color:C.bg2}}}));
+      const half=Math.ceil(n/2), rh=Math.min(0.24,avail/(half+2)), fs=rh>=0.2?8:rh>=0.15?7:6;
+      [Q.rows.slice(0,half),Q.rows.slice(half)].forEach((chunk,k)=>{
+        const body=chunk.map(r=>{ const row=toRow(r); return pick.map(i=>row[i]); });
+        if(k===1) body.push(pick.map(i=>totCell(totRow[i])));
+        sl.addTable([hdr,...body],{x:0.4+k*6.33,y:1.15,w:6.2,fontFace:F,fontSize:fs,color:C.ink,rowH:rh,align:"right",border:{type:"solid",color:C.line,pt:0.5},margin:0.02}); });
+    }
+    sl.addText("詳細な前提条件と全項目はExcel出力を参照",{x:0.4,y:7.2,w:8,h:0.2,fontFace:F,fontSize:8,color:C.mut,margin:0});
+  });
   return pptx.write({outputType:"arraybuffer"});
 }
 
