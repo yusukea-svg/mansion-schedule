@@ -102,6 +102,7 @@ svg text{fill:var(--muted);font-family:var(--f-body);font-size:11px;font-variant
 .glink{border:0;background:none;padding:0;font-size:.78rem;color:var(--fg);text-align:left;border-radius:0}
 .glink:hover{text-decoration:underline;text-underline-offset:3px}
 td.ov input{border-color:var(--accent);background:var(--accent-soft)}
+input.locked{background:var(--surface-2);color:var(--muted);cursor:not-allowed;border-style:dashed}
 td input.adin.cin{width:58px;font-weight:700}
 td input.adin{width:84px;text-align:right;padding:2px 6px;font-size:.78rem;background:var(--bg)}
 tr.pre td{color:var(--muted)}
@@ -507,6 +508,7 @@ function renderInputs(){
         <div class="fields">
           ${ymField("広告開始","sales.adStart")}
           ${ymField("集客開始","sales.collectStart",{hint:"モデルルーム来場の受付開始"})}
+          ${ymField("販売開始","phases.0.start",{hint:"第1期の販売開始と連動"})}
           ${ymField("完売目標","sales.target")}
           ${ymField("竣工","schedule.build.end",{hint:"施工の終了月と連動"})}
           ${ymField("引渡し","schedule.handover.start")}
@@ -517,10 +519,11 @@ function renderInputs(){
         <div class="scroll"><table class="ptable"><thead><tr><th>期</th><th>販売開始</th><th>戸数</th><th></th></tr></thead><tbody>
         ${S.phases.map((p,k)=>`<tr>
           <td><input aria-label="期名" data-ph="${k}" data-k="name" type="text" value="${esc(p.name)}" style="width:58px"></td>
-          <td><input aria-label="販売開始" data-ph="${k}" data-k="start" type="month" value="${p.start}" style="width:108px"></td>
+          <td>${k===0?`<input aria-label="販売開始（スケジュールの販売開始と連動）" type="month" value="${p.start}" disabled class="locked" title="スケジュールの「販売開始」で変更します" style="width:108px">`:`<input aria-label="販売開始" data-ph="${k}" data-k="start" type="month" value="${p.start}" style="width:108px">`}</td>
           <td><input aria-label="戸数" data-ph="${k}" data-k="units" type="number" min="0" step="1" value="${p.units}" style="width:48px"></td>
-          <td><button type="button" data-del="${k}" aria-label="${esc(p.name)}を削除" ${S.phases.length<2?"disabled":""}>×</button></td></tr>`).join("")}
+          <td><button type="button" data-del="${k}" aria-label="${esc(p.name)}を削除" ${S.phases.length<2||k===0?"disabled":""}>×</button></td></tr>`).join("")}
         </tbody></table></div>
+        <div class="hint">第1期の販売開始は、スケジュールの「販売開始」で変更します。</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" id="addPhase">期を追加</button>
         <span class="hint">合計 <b class="num">${sumU}</b> 戸${S.under.on?"（アンダー販売を含む）":""}</span>
         ${diff?`<span class="warn">総戸数と ${diff>0?"+":""}${diff} 戸ずれています（試算は期の合計で行います）</span>`:""}</div>
@@ -829,7 +832,7 @@ document.addEventListener("change",e=>{
   else if(t.dataset.ym){ const c=S.scenarios[+t.dataset.sck]; if(!c) return; c.adOverride=c.adOverride||{}; if(t.value==="") delete c.adOverride[t.dataset.ym]; else c.adOverride[t.dataset.ym]=+t.value; save(); render(); return; }
   else if(t.dataset.fx!=null){ const f=S.fixedItems[+t.dataset.fx]; f[t.dataset.k]= t.type==="number"? +t.value : t.value; save(); renderInputs(); render(); return; }
   else return;
-  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(under\.|project\.(area|tsubo|units)|sales\.(adStart|collectStart|adMode|adRate|adPerUnit|varRate))/.test(t.dataset.path||"")) renderInputs(); render();
+  save(); if(t.dataset.ph!=null||t.dataset.path==="project.units"||/^(phases\.|under\.|project\.(area|tsubo|units)|sales\.(adStart|collectStart|adMode|adRate|adPerUnit|varRate))/.test(t.dataset.path||"")) renderInputs(); render();
 });
 document.addEventListener("click",e=>{
   const t=e.target.closest("button"); if(!t)return;
