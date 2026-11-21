@@ -286,7 +286,7 @@ const SAMPLE = {
     handover:{start:"2029-03", end:"2029-03"}
   },
   under:{on:true, start:"2027-01", end:"2027-03", units:10, adj:0},
-  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adMode:"rate", adRate:3.0, adPerUnit:200, varRate:50, extendRate:100},
+  sales:{adStart:"2027-04", collectStart:"2027-05", target:"2028-09", adMode:"rate", adRate:3.0, adPerUnit:200, varRate:50},
   phases:[
     {name:"第1期", start:"2027-06", units:40, adj:0},
     {name:"第2期", start:"2027-11", units:40, adj:0},
@@ -448,7 +448,7 @@ function simulateSales(st){
   }
   const endI=rows.at(-1).i;
   // 流動費（広告）：計画値を上限に固定し、広告開始〜完売の各月へ按分。手入力の月はその額、残りを他の月で按分
-  const weight=i=> i<adI||i>endI ? 0 : i<saleI?1.6 : launchSet.has(i)?1.4 : i>tgtI?(+s.extendRate||0)/100 : i>tgtI-3?0.8 : 1;
+  const weight=i=> i<adI||i>endI ? 0 : i<saleI?1.6 : launchSet.has(i)?1.4 : i>tgtI?1 : i>tgtI-3?0.8 : 1; // 完売目標後の月は通常月と同じ重み
   let ovSum=0, wSum=0;
   rows.forEach(r=>{ const v=ov[r.ym]; r.isOv= r.i>=adI && v!==undefined && v!==null && v!=="" && !isNaN(+v); if(r.isOv) ovSum+=+v; else wSum+=weight(r.i); });
   const restVar=Math.max(0,varBudget-ovSum);
@@ -543,7 +543,6 @@ function renderInputs(){
           ${adField("rate")}
           ${adField("perUnit")}
           ${numField("流動費の割合","sales.varRate","%",{step:5,hint:"販促費に対する割合。残りが固定費"})}
-          ${numField("目標超過後の流動費","sales.extendRate","%",{step:5,hint:"完売が目標より遅れる場合だけ使用。目標後の月に流動費をどれだけ配分するか（通常月＝100）"})}
           ${(()=>{ const pp=promoPlan(); return `<div class="field full derived"><span class="hint">販促費の計画値</span><span class="num"><b>${oku(pp.budget)}</b>　<span class="hint">流動費（広告） ${oku(pp.varB)} ／ 固定費 ${oku(pp.fixB)}</span></span>
             <span class="hint">流動費は計画値を上限に固定し、月ごとに按分します。<button type="button" class="linkbtn" data-sub="fixed">固定費の内訳を入力する</button></span></div>`; })()}
         </div>
@@ -907,7 +906,7 @@ function assumptionRows(R){
   return [["物件名",S.project.name],["シナリオ",S.scenarios[S.activeScenario]?.name||""],["総戸数",R.supply+" 戸"+(R.U?`（うちアンダー${R.U.units}戸）`:"")],["平均専有面積",fmt(S.project.area,1)+" ㎡（"+fmt(S.project.area/TSUBO,2)+"坪）"],["平均坪単価",fmt(S.project.tsubo)+" 万円/坪"],["平均販売価格",fmt(S.project.avgPrice)+" 万円"],["総販売額",oku(R.totalRev)],
     ...(R.U?[["アンダー販売",`${i2lbl(R.U.si)}〜${i2lbl(R.U.ei)}・${R.U.units}戸`]]:[]),
     ["広告開始",i2lbl(R.adI)],["集客開始",i2lbl(R.colI)],["販売開始（第1期）",i2lbl(R.saleI)],["完売目標",i2lbl(R.tgtI)],...(keyDates().comp!=null?[["竣工",i2lbl(keyDates().comp)]]:[]),...(keyDates().ho!=null?[["引渡し",i2lbl(keyDates().ho)]]:[]),
-    ["販促費の基準",s.adMode==="perUnit"?"1戸あたり金額":"販売額に対する率"],(s.adMode==="perUnit"?["1戸あたり販促費",s.adPerUnit+" 万円/戸"]:["販促費率",s.adRate+" %"]),["販促費（計画値）",oku(R.budget)],["流動費の割合",(+s.varRate||0)+" %"],["流動費・広告（計画値・上限）",oku(R.varBudget)],["固定費",oku(R.fixBudget)],["目標超過後の流動費",s.extendRate+" %"],
+    ["販促費の基準",s.adMode==="perUnit"?"1戸あたり金額":"販売額に対する率"],(s.adMode==="perUnit"?["1戸あたり販促費",s.adPerUnit+" 万円/戸"]:["販促費率",s.adRate+" %"]),["販促費（計画値）",oku(R.budget)],["流動費の割合",(+s.varRate||0)+" %"],["流動費・広告（計画値・上限）",oku(R.varBudget)],["固定費",oku(R.fixBudget)],
     ["第1期 販売目標",(c.firstTarget??"")+" 戸"],["第1期 反響来場率",(c.firstVisitRate??"")+" %"],["第1期 契約率（歩留）",(c.firstYield??"")+" %"],["第1期 必要来場（逆算）",fmt(R.first.vis)+" 組"],["第1期 必要反響（逆算）",fmt(R.first.inq)+" 件"],
     ["第1期以降 月間来場数",(c.visits??"")+" 組/月"],["第1期以降 反響来場率",(c.visitRate??"")+" %"],["第1期以降 契約率（歩留）",(c.yieldRate??"")+" %"]];
 }
