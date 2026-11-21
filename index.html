@@ -902,24 +902,28 @@ function monthSheet(R){
   ws["!freeze"]={xSplit:1,ySplit:1};
   return ws;
 }
-// 契約推移：3シナリオを1シートに。横軸＝経過月数（計画の最初の月＝1）
+// 契約推移：3シナリオを1シートに。シナリオごとに表を作り（経過月数つき）、表の間は1行空ける
 function trendSheet(all,Ra){
   const i0=Math.min(...all.map(x=>x.R.rows[0].i)), i1=Math.max(...all.map(x=>x.R.rows.at(-1).i)), N=i1-i0+1, idx=[...Array(N).keys()];
-  const aoa=[["経過月数",...idx.map(j=>j+1)],["年月",...idx.map(j=>i2lbl(i0+j))],["販売開始からの月数",...idx.map(j=>{ const m=i0+j-Ra.saleI+1; return m>=1?m:null; })],[]];
-  const pctRows=[];
-  all.forEach(x=>{ const Q=x.R, at=j=>Q.rows.find(r=>r.i===i0+j);
-    aoa.push([`${x.c.name}　月間契約`,...idx.map(j=>at(j)?at(j).c:null)]);
-    aoa.push([`${x.c.name}　累計契約`,...idx.map(j=>at(j)?at(j).sold:(i0+j>Q.rows.at(-1).i?Q.rows.at(-1).sold:null))]);
-    aoa.push([`${x.c.name}　累計契約率`,...idx.map(j=>at(j)?+at(j).rate.toFixed(4):(i0+j>Q.rows.at(-1).i?+Q.rows.at(-1).rate.toFixed(4):null))]); pctRows.push(aoa.length);
+  const aoa=[], pctRows=[], boldRows=[];
+  const hdr=()=>{ aoa.push(["経過月数",...idx.map(j=>j+1)]); aoa.push(["年月",...idx.map(j=>i2lbl(i0+j))]); aoa.push(["販売開始からの月数",...idx.map(j=>{ const m=i0+j-Ra.saleI+1; return m>=1?m:null; })]); };
+  all.forEach(x=>{ const Q=x.R, last=Q.rows.at(-1), at=j=>Q.rows.find(r=>r.i===i0+j), after=j=>i0+j>last.i;
+    const mon=f=>idx.map(j=>at(j)?Math.round(f(at(j))):null), cum=f=>idx.map(j=>at(j)?Math.round(f(at(j))):after(j)?Math.round(f(last)):null);
+    aoa.push([`${x.c.name}シナリオ　完売予定 ${Q.selloutI==null?"期間内に完売せず":`${i2lbl(Q.selloutI)}（${Q.selloutI-i0+1}ヶ月目）`}`]); boldRows.push(aoa.length);
+    hdr();
+    aoa.push(["反響（月）",...mon(r=>r.inq)],["反響（累計）",...cum(r=>r.cumInq)],["来場（月）",...mon(r=>r.vis)],["来場（累計）",...cum(r=>r.cumVis)],["契約（月）",...mon(r=>r.c)],["契約（累計）",...cum(r=>r.sold)]);
+    aoa.push(["累計契約率",...idx.map(j=>at(j)?+at(j).rate.toFixed(4):after(j)?+last.rate.toFixed(4):null)]); pctRows.push(aoa.length);
     aoa.push([]); });
   const tgt=j=>{ const i=i0+j; return i<Ra.saleI? null : (Ra.U?Ra.U.units:0)+Math.min(1,(i-Ra.saleI+1)/(Ra.tgtI-Ra.saleI+1))*Ra.phaseSupply; };
+  aoa.push([`目標ペース　完売目標 ${i2lbl(Ra.tgtI)}（${Ra.tgtI-i0+1}ヶ月目）`]); boldRows.push(aoa.length);
+  hdr();
   aoa.push(["目標　累計契約",...idx.map(j=>tgt(j)==null?null:Math.round(tgt(j)))]);
   aoa.push(["目標　累計契約率",...idx.map(j=>tgt(j)==null?null:+(tgt(j)/Ra.supply).toFixed(4))]); pctRows.push(aoa.length);
-  aoa.push([],["完売予定",...all.map(x=>`${x.c.name}：${x.R.selloutI==null?"期間内に完売せず":`${i2lbl(x.R.selloutI)}（${x.R.selloutI-i0+1}ヶ月目）`}`)]);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"]=[{wch:20},...idx.map(()=>({wch:9}))];
+  ws["!cols"]=[{wch:22},...idx.map(()=>({wch:9}))];
   pctRows.forEach(rn=>idx.forEach(j=>{ const a=XLSX.utils.encode_cell({r:rn-1,c:j+1}); if(ws[a]) ws[a].z="0.0%"; }));
-  ws["!freeze"]={xSplit:1,ySplit:3};
+  for(let rn=1;rn<=aoa.length;rn++) idx.forEach(j=>{ const a=XLSX.utils.encode_cell({r:rn-1,c:j+1}); if(ws[a]&&typeof ws[a].v==="number"&&!pctRows.includes(rn)&&ws[a].v>=1000) ws[a].z="#,##0"; });
+  ws["!freeze"]={xSplit:1,ySplit:0};
   return ws;
 }
 function buildXlsx(){
